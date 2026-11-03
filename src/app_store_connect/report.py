@@ -14,7 +14,7 @@ import json
 import re
 import zipfile
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from importlib import metadata
 from typing import Any, Final
@@ -23,6 +23,7 @@ import httpx
 
 from app_store_connect import osv
 from app_store_connect.httpio import DownloadError, fetch_limited
+from app_store_connect.identity import CodeIdentity, compare_with_review, current_identity
 from app_store_connect.review import Review
 from app_store_connect.spec import (
     APPLE_API_SPEC_VERSION,
@@ -58,6 +59,31 @@ USED_ATTRIBUTES: Final[dict[str, tuple[str, ...]]] = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class ReportFacts:
+    """The report's own figures. The server (not the model) shows them in the review form."""
+
+    spec_checked: bool
+    missing_endpoints: int
+    deprecated_endpoints: int
+    outdated: int | None  # None: the lookup failed
+    vulnerabilities: int | None  # None: the lookup failed
+
+    @property
+    def not_checked(self) -> int:
+        """How many parts of the report could not be checked."""
+        return sum(not ok for ok in (self.spec_checked, self.outdated is not None,
+                                     self.vulnerabilities is not None))  # fmt: skip
+
+
+@dataclass(frozen=True, slots=True)
+class ReportResult:
+    """The report text and the figures taken from it."""
+
+    text: str
+    facts: ReportFacts
+
+
 class ReportError(Exception):
     """A lookup needed for the report failed."""
 
@@ -80,6 +106,7 @@ class ReportInputs:
     review: Review | None
     current_tools: list[str]
     packages: list[osv.Query]
+    code: CodeIdentity = field(default_factory=current_identity)
 
 
 # ---------------------------------------------------------------- Apple's spec
@@ -222,8 +249,8 @@ def latest_on_pypi(client: httpx.Client, name: str) -> str:
         raise ReportError(f"PyPI lookup for {name} failed: {exc}") from exc
 
 
-def outdated_section(inputs: ReportInputs) -> list[str]:
-    """List installed dependencies that have a newer release on PyPI."""
+def outdated_section(inputs: ReportInputs) -> tuple[list[str], int]:
+    """List installed dependencies that have a newer release on PyPI, and how many there are."""
     lines = ["## Our dependencies", "", "### Outdated", ""]
     outdated: list[str] = []
     for name, installed in inputs.packages:
@@ -231,19 +258,21 @@ def outdated_section(inputs: ReportInputs) -> list[str]:
         if is_outdated(installed, latest):
             outdated.append(f"- `{name}` {installed} -> {latest}")
     note = "Fix with `uv lock --upgrade` (see MAINTENANCE.md)." if outdated else ""
-    return [
+    text = [
         *lines,
         *(outdated or ["All installed packages are on their latest release."]),
         "",
         note,
         "",
     ]
+    return text, len(outdated)
 
 
-def vulnerability_section(inputs: ReportInputs) -> list[str]:
-    """OSV results for the installed packages."""
+def vulnerability_section(inputs: ReportInputs) -> tuple[list[str], int]:
+    """OSV results for the installed packages, and how many vulnerabilities were found."""
     vulns = osv.check_packages(inputs.client, inputs.packages)
-    return ["### Known vulnerabilities (OSV, PyPI)", "", osv.format_vulnerabilities(vulns), ""]
+    text = ["### Known vulnerabilities (OSV, PyPI)", "", osv.format_vulnerabilities(vulns), ""]
+    return text, len(vulns)
 
 
 # ---------------------------------------------------------------- the rest
@@ -287,26 +316,50 @@ def decide_section() -> list[str]:
     ]
 
 
-def guarded(section: Callable[[ReportInputs], list[str]], inputs: ReportInputs) -> list[str]:
-    """Run a section builder; if its lookup fails, return a plain 'NOT CHECKED' note instead."""
+def guarded(
+    section: Callable[[ReportInputs], tuple[list[str], int]], inputs: ReportInputs
+) -> tuple[list[str], int | None]:
+    """Run a section builder; if its lookup fails, return a plain 'NOT CHECKED' note instead.
+
+    The number is the section's count, or None when it could not be checked.
+    """
     try:
         return section(inputs)
     except (ReportError, osv.OsvError) as exc:
-        return [f"**NOT CHECKED** (never read this as OK): {exc}", ""]
+        return [f"**NOT CHECKED** (never read this as OK): {exc}", ""], None
+
+
+def code_section(inputs: ReportInputs) -> list[str]:
+    """Which code is running, and whether it is the code that was last reviewed."""
+    reviewed = inputs.review.code if inputs.review else None
+    return ["## Running code", "", *compare_with_review(reviewed, inputs.code), ""]
+
+
+def build_report_with_facts(inputs: ReportInputs) -> ReportResult:
+    """Return the full report as markdown, plus the figures the confirmation form repeats."""
+    lines = [f"# App Store Connect maintenance report ({inputs.now.date().isoformat()})", ""]
+    lines += code_section(inputs)
+    missing = deprecated = 0
+    try:
+        spec = load_spec(inputs.client)
+    except ReportError as exc:
+        spec_checked = False
+        lines += ["## Apple API spec", "", f"**NOT CHECKED** (never read this as OK): {exc}", ""]
+    else:
+        spec_checked = True
+        found_missing, found_deprecated = endpoint_problems(spec)
+        missing, deprecated = len(found_missing), len(found_deprecated)
+        lines += spec_section(spec) + attribute_section(spec) + area_section(spec)
+    lines += notes_section()
+    outdated_lines, outdated = guarded(outdated_section, inputs)
+    vuln_lines, vulns = guarded(vulnerability_section, inputs)
+    lines += outdated_lines + vuln_lines
+    lines += tools_section(inputs)
+    lines += decide_section()
+    facts = ReportFacts(spec_checked, missing, deprecated, outdated, vulns)
+    return ReportResult("\n".join(lines) + "\n", facts)
 
 
 def build_report(inputs: ReportInputs) -> str:
     """Return the full report as markdown."""
-    lines = [f"# App Store Connect maintenance report ({inputs.now.date().isoformat()})", ""]
-    try:
-        spec = load_spec(inputs.client)
-    except ReportError as exc:
-        lines += ["## Apple API spec", "", f"**NOT CHECKED** (never read this as OK): {exc}", ""]
-    else:
-        lines += spec_section(spec) + attribute_section(spec) + area_section(spec)
-    lines += notes_section()
-    lines += guarded(outdated_section, inputs)
-    lines += guarded(vulnerability_section, inputs)
-    lines += tools_section(inputs)
-    lines += decide_section()
-    return "\n".join(lines) + "\n"
+    return build_report_with_facts(inputs).text

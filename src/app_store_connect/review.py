@@ -20,6 +20,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final
 
+from app_store_connect.identity import CodeIdentity, current_identity
 from app_store_connect.paths import ensure_private_dir, state_dir
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,13 @@ class Review:
     outcome: str
     tools: tuple[str, ...] = ()
     history: tuple[HistoryEntry, ...] = ()
+    code_version: str = ""  # version of the code that was reviewed ("" in older records)
+    code_commit: str = ""  # git commit of that code, when it was installed from git
+
+    @property
+    def code(self) -> CodeIdentity | None:
+        """The identity of the reviewed code, or None when the record did not store it."""
+        return CodeIdentity(self.code_version, self.code_commit) if self.code_version else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +117,8 @@ def _review_from_json(data: Any) -> Review:
         outcome=str(data.get("outcome", "")),
         tools=tuple(str(name) for name in tools),
         history=_history_from_json(data.get("history")),
+        code_version=str(data.get("code_version", "")),
+        code_commit=str(data.get("code_commit", "")),
     )
 
 
@@ -158,6 +168,7 @@ def build_review(
     spec_version: str,
     outcome: str,
     tools: list[str] | None,
+    code: CodeIdentity | None = None,
 ) -> Review:
     """Assemble the new review, pushing the previous one into the history (newest first)."""
     history: list[HistoryEntry] = []
@@ -176,6 +187,8 @@ def build_review(
         outcome=outcome,
         tools=tuple(sorted(set(tools))) if tools is not None else old_tools,
         history=tuple(history[:HISTORY_LIMIT]),
+        code_version=code.version if code else "",
+        code_commit=code.commit if code else "",
     )
 
 
@@ -187,6 +200,8 @@ def _to_json(review: Review) -> dict[str, Any]:
         "spec_version": review.spec_version,
         "outcome": review.outcome,
         "tools": list(review.tools),
+        "code_version": review.code_version,
+        "code_commit": review.code_commit,
         "history": [
             {
                 "reviewed_at": h.reviewed_at,
@@ -214,8 +229,16 @@ def write_review(review: Review, path: Path | None = None) -> None:
         raise
 
 
-def stamp_review(now: datetime, spec_version: str, outcome: str, tools: list[str] | None) -> Review:
-    """Record a completed review and return it."""
-    review = build_review(load_review(), now, spec_version, outcome, tools)
+def stamp_review(
+    now: datetime,
+    spec_version: str,
+    outcome: str,
+    tools: list[str] | None,
+    code: CodeIdentity | None = None,
+) -> Review:
+    """Record a completed review (of the running code, unless `code` is given) and return it."""
+    review = build_review(
+        load_review(), now, spec_version, outcome, tools, code or current_identity()
+    )
     write_review(review)
     return review

@@ -85,6 +85,7 @@ async def test_confirm_review_stamps_only_on_accept_with_read_true(tmp_path: Pat
     accept = answer(types.ElicitResult(action="accept", content={"read": True}))
     fake = apps_fake()
     async with connected(tmp_path, fake, fresh_review=False, elicit=accept) as client:
+        await client.call_tool("maintenance_report", {})
         result = await client.call_tool("maintenance_confirm_review", {"summary": "all fine"})
         assert not result.is_error
         assert not (await client.call_tool("list_apps", {})).is_error  # the gate reopened
@@ -109,6 +110,7 @@ async def test_confirm_review_does_not_stamp_otherwise(
     tmp_path: Path, reply: types.ElicitResult
 ) -> None:
     async with connected(tmp_path, apps_fake(), fresh_review=False, elicit=answer(reply)) as client:
+        await client.call_tool("maintenance_report", {})
         result = await client.call_tool("maintenance_confirm_review", {"summary": "ok"})
     assert result.is_error
     assert "app-store-connect@main app-store-connect review" in text_of(result)
@@ -117,6 +119,7 @@ async def test_confirm_review_does_not_stamp_otherwise(
 
 async def test_confirm_review_without_elicitation_support_does_not_stamp(tmp_path: Path) -> None:
     async with connected(tmp_path, apps_fake(), fresh_review=False, elicit=None) as client:
+        await client.call_tool("maintenance_report", {})
         result = await client.call_tool("maintenance_confirm_review", {"summary": "ok"})
     assert result.is_error
     assert "terminal" in text_of(result)

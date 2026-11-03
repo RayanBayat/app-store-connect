@@ -17,12 +17,23 @@ from mcp.client.session import ElicitationFnT
 from app_store_connect.auth import TokenProvider
 from app_store_connect.client import AscClient
 from app_store_connect.maintenance import Maintenance
+from app_store_connect.report import ReportFacts, ReportResult
 from app_store_connect.review import stamp_review
 from app_store_connect.server import AppServer
 from app_store_connect.spec import APPLE_API_SPEC_VERSION
 
 from .conftest import NOW
 from .helpers import make_config
+
+FACTS = ReportFacts(
+    spec_checked=True, missing_endpoints=0, deprecated_endpoints=0, outdated=0, vulnerabilities=0
+)
+
+
+def fake_report(tools: list[str]) -> ReportResult:
+    """A canned report for tests (no network)."""
+    return ReportResult(f"REPORT {tools}", FACTS)
+
 
 Reply = dict[str, Any] | Callable[[httpx.Request], httpx.Response]
 
@@ -106,7 +117,7 @@ async def connected(
     if fresh_review:
         stamp_review(NOW, APPLE_API_SPEC_VERSION, "test", ["list_apps"])
     client = AscClient(TokenProvider(config), transport=httpx.MockTransport(fake.handler))
-    maintenance = Maintenance(config, clock=lambda: NOW, report_fn=lambda tools: f"REPORT {tools}")
+    maintenance = Maintenance(config, clock=lambda: NOW, report_fn=fake_report)
     app = AppServer(config, client, maintenance=maintenance, clock=lambda: NOW)
     async with Client(
         app.build_server(), mode="legacy", cache=None, elicitation_callback=elicit

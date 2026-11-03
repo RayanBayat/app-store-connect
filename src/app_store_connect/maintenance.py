@@ -14,7 +14,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Final
 
 import httpx
@@ -24,7 +24,14 @@ from mcp.shared.exceptions import MCPError
 
 from app_store_connect import __version__
 from app_store_connect.config import Config
-from app_store_connect.report import ReportInputs, build_report, installed_packages
+from app_store_connect.identity import compare_with_review, current_identity
+from app_store_connect.report import (
+    ReportFacts,
+    ReportInputs,
+    ReportResult,
+    build_report_with_facts,
+    installed_packages,
+)
 from app_store_connect.review import (
     Review,
     check_review,
@@ -33,6 +40,7 @@ from app_store_connect.review import (
     stamp_review,
 )
 from app_store_connect.spec import APPLE_API_SPEC_VERSION
+from app_store_connect.textsafe import escape_display
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +109,9 @@ TOOLS: Final[list[types.Tool]] = [
 ]
 NAMES: Final = frozenset(tool.name for tool in TOOLS)
 
-ReportFn = Callable[[list[str]], str]
+ResultFn = Callable[[list[str]], ReportResult]
+# A review may only be confirmed on a report that this server built a short while ago.
+REPORT_MAX_AGE: Final = timedelta(minutes=30)
 
 
 def text_result(text: str, *, is_error: bool = False) -> types.CallToolResult:
@@ -114,8 +124,8 @@ def new_report_client() -> httpx.Client:
     return httpx.Client(timeout=HTTP_TIMEOUT, follow_redirects=False)
 
 
-def make_report(current_tools: list[str]) -> str:
-    """Build the real report (network access). Run it in a worker thread."""
+def make_report_result(current_tools: list[str]) -> ReportResult:
+    """Build the real report with its figures (network access). Run it in a worker thread."""
     with new_report_client() as client:
         inputs = ReportInputs(
             client=client,
@@ -124,7 +134,12 @@ def make_report(current_tools: list[str]) -> str:
             current_tools=current_tools,
             packages=installed_packages(),
         )
-        return build_report(inputs)
+        return build_report_with_facts(inputs)
+
+
+def make_report(current_tools: list[str]) -> str:
+    """Build the real report text only (used by the `review` command)."""
+    return make_report_result(current_tools).text
 
 
 def describe_review(review: Review | None, now: datetime, max_days: int) -> list[str]:
@@ -147,6 +162,7 @@ def describe_review(review: Review | None, now: datetime, max_days: int) -> list
 def status_text(*, max_days: int, now: datetime, review: Review | None, writes: bool | None) -> str:
     """Build the text of maintenance_status (shared with the `status` command)."""
     lines = describe_review(review, now, max_days)
+    lines += compare_with_review(review.code if review else None, current_identity())
     lines.append(f"Apple API spec checked against: {APPLE_API_SPEC_VERSION}")
     lines.append(f"app-store-connect version: {__version__}")
     if writes is not None:
@@ -160,7 +176,8 @@ class Maintenance:
 
     config: Config
     clock: Callable[[], datetime] = now_local
-    report_fn: ReportFn = field(default=make_report)
+    report_fn: ResultFn = field(default=make_report_result)
+    _last_report: tuple[datetime, ReportFacts] | None = field(default=None, init=False)
 
     async def call(
         self,
@@ -173,7 +190,9 @@ class Maintenance:
         if name == STATUS:
             return text_result(self.status())
         if name == REPORT:
-            return text_result(await asyncio.to_thread(self.report_fn, tool_names))
+            result = await asyncio.to_thread(self.report_fn, tool_names)
+            self._last_report = (self.clock(), result.facts)  # this session built a report
+            return text_result(result.text)
         return await self.confirm(str(arguments.get("summary", "")), session, tool_names)
 
     def status(self) -> str:
@@ -195,7 +214,14 @@ class Maintenance:
                 f"summary must be 1 to {MAX_SUMMARY_CHARS} characters describing the outcome.",
                 is_error=True,
             )
-        if not await self._human_accepts(summary, session):
+        recent = self._recent_report()
+        if recent is None:
+            return text_result(
+                "No maintenance report was built in this session in the last 30 minutes. "
+                "Run maintenance_report, show it to the user, then call this tool again.",
+                is_error=True,
+            )
+        if not await self._human_accepts(summary, session, *recent):
             return text_result(
                 "The review was NOT recorded: the confirmation was declined or this client "
                 "cannot show confirmation forms. Ask the user to run this in a terminal "
@@ -205,16 +231,56 @@ class Maintenance:
         stamp_review(self.clock(), APPLE_API_SPEC_VERSION, summary, tool_names)
         return text_result("Review recorded. App Store Connect tools are available again.")
 
-    async def _human_accepts(self, summary: str, session: ServerSession) -> bool:
+    def _recent_report(self) -> tuple[datetime, ReportFacts] | None:
+        """The report built in this server session, if it is at most 30 minutes old."""
+        if self._last_report is None:
+            return None
+        built_at, facts = self._last_report
+        age = self.clock() - built_at
+        return (built_at, facts) if timedelta(0) <= age <= REPORT_MAX_AGE else None
+
+    async def _human_accepts(
+        self, summary: str, session: ServerSession, built_at: datetime, facts: ReportFacts
+    ) -> bool:
         """Show the form and return True only for an explicit accept with read=true."""
-        message = (
-            "Confirm the monthly App Store Connect maintenance review.\n\n"
-            f"Summary from Claude: {summary}\n\n"
-            "Only confirm if you read the maintenance report yourself."
-        )
+        message = review_form(summary, built_at, facts, load_review())
         try:
             result = await session.elicit_form(message, CONFIRM_SCHEMA)
         except MCPError as exc:
             logger.info("could not ask for confirmation: %s", exc)
             return False
         return result.action == "accept" and (result.content or {}).get("read") is True
+
+
+def _count(value: int | None) -> str:
+    return "NOT CHECKED" if value is None else str(value)
+
+
+def review_form(summary: str, built_at: datetime, facts: ReportFacts, review: Review | None) -> str:
+    """The text of the review form: the server's own figures first, Claude's summary last.
+
+    The figures come from the report this server built, never from the model, so a rosy
+    summary cannot hide a bad report. The summary is escaped and labelled as the model's.
+    """
+    spec = (
+        f"missing endpoints {facts.missing_endpoints}, deprecated {facts.deprecated_endpoints}"
+        if facts.spec_checked
+        else "NOT CHECKED"
+    )
+    lines = [
+        "Confirm the monthly App Store Connect maintenance review.",
+        "",
+        "Figures from this server's own report (not from Claude):",
+        f"- Report built: {built_at.isoformat(timespec='seconds')}",
+        f"- Apple API spec (checked against {APPLE_API_SPEC_VERSION}): {spec}; "
+        f"parts not checked: {facts.not_checked}",
+        f"- Known vulnerabilities in dependencies: {_count(facts.vulnerabilities)}",
+        f"- Outdated dependencies: {_count(facts.outdated)}",
+        *compare_with_review(review.code if review else None, current_identity()),
+        "",
+        f"Claude's summary (written by the model, not checked by the server): "
+        f"{escape_display(summary)}",
+        "",
+        "Only confirm if you read the maintenance report yourself.",
+    ]
+    return "\n".join(lines)

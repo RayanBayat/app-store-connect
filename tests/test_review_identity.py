@@ -1,0 +1,188 @@
+"""H1(c) code identity in review.json, and L4 the confirmation needs a recent report."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import replace
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import cast
+
+import mcp_types as types
+import pytest
+from mcp.client.session import ClientRequestContext
+from mcp.server.session import ServerSession
+
+from app_store_connect import __version__, identity, maintenance
+from app_store_connect.identity import CodeIdentity, commit_from_direct_url, compare_with_review
+from app_store_connect.maintenance import Maintenance
+from app_store_connect.report import ReportFacts, ReportResult, build_report
+from app_store_connect.review import Review, load_review, review_path, stamp_review
+
+from .apple_fake import FACTS, FakeApple, connected, text_of
+from .conftest import NOW
+from .helpers import make_config
+from .test_report import make_inputs
+
+DIRECT_URL = json.dumps(
+    {"url": "https://github.com/x/y", "vcs_info": {"vcs": "git", "commit_id": "a" * 40}}
+)
+
+
+def test_commit_is_read_from_direct_url_json() -> None:
+    assert commit_from_direct_url(DIRECT_URL) == "a" * 40
+    assert commit_from_direct_url(json.dumps({"dir_info": {"editable": True}})) == ""
+    assert commit_from_direct_url("not json") == ""
+    assert commit_from_direct_url(None) == ""
+
+
+def test_stamp_records_version_and_commit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(identity, "_direct_url_text", lambda: DIRECT_URL)
+    stamp_review(NOW, "4.5.1", "ok", [])
+    data = json.loads(review_path().read_text(encoding="utf-8"))
+    assert data["code_commit"] == "a" * 40
+    assert data["code_version"] == __version__
+    review = load_review()
+    assert review is not None
+    assert review.code == CodeIdentity(__version__, "a" * 40)
+
+
+def test_old_record_without_identity_still_loads_and_gate_age_is_unchanged() -> None:
+    stamp_review(NOW, "4.5.1", "ok", [])
+    path = review_path()
+    data = json.loads(path.read_text(encoding="utf-8"))
+    del data["code_version"], data["code_commit"]
+    path.write_text(json.dumps(data), encoding="utf-8")
+    review = load_review()
+    assert review is not None and review.code is None
+
+
+def test_compare_says_clearly_when_code_differs() -> None:
+    running = CodeIdentity("0.2.0", "b" * 40)
+    same = compare_with_review(running, running)
+    assert "This is the code that was last reviewed" in " ".join(same)
+    for reviewed in (CodeIdentity("0.1.0", "b" * 40), CodeIdentity("0.2.0", "c" * 40),
+                     CodeIdentity("0.2.0", "")):  # fmt: skip
+        text = " ".join(compare_with_review(reviewed, running))
+        assert "NOT the code that was last reviewed" in text
+    assert "did not record" in " ".join(compare_with_review(None, running))
+
+
+def test_report_and_status_show_the_difference(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(identity, "_direct_url_text", lambda: None)
+    old = stamp_review(NOW, "4.5.1", "ok", [], CodeIdentity("0.0.1", "d" * 40))
+    text = report_text(old)
+    assert "## Running code" in text
+    assert "NOT the code that was last reviewed" in text
+    status = maintenance.status_text(max_days=30, now=NOW, review=old, writes=None)
+    assert "NOT the code that was last reviewed" in status
+
+
+def report_text(review: Review) -> str:
+    return build_report(replace(make_inputs(), review=review))
+
+
+# ---------------------------------------------------------------- L4
+
+
+class Forms:
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+
+    async def __call__(
+        self, context: ClientRequestContext, params: types.ElicitRequestParams
+    ) -> types.ElicitResult:
+        self.messages.append(params.message)
+        return types.ElicitResult(action="accept", content={"read": True})
+
+
+async def test_confirm_without_a_report_in_this_session_is_refused_without_a_form(
+    tmp_path: Path,
+) -> None:
+    forms = Forms()
+    async with connected(tmp_path, FakeApple(), fresh_review=False, elicit=forms) as client:
+        result = await client.call_tool("maintenance_confirm_review", {"summary": "fine"})
+    assert result.is_error
+    assert "maintenance_report" in text_of(result)
+    assert forms.messages == []
+    assert load_review() is None
+
+
+def maintenance_with_clock(tmp_path: Path, now: list[datetime]) -> Maintenance:
+    return Maintenance(
+        make_config(tmp_path / "k"),
+        clock=lambda: now[0],
+        report_fn=lambda _tools: ReportResult("R", FACTS),
+    )
+
+
+def as_session(fake: FakeSession) -> ServerSession:
+    """The tests only need elicit_form, so a small fake stands in for the MCP session."""
+    return cast(ServerSession, fake)
+
+
+class FakeSession:
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+
+    async def elicit_form(self, message: str, schema: object) -> types.ElicitResult:
+        self.messages.append(message)
+        return types.ElicitResult(action="accept", content={"read": True})
+
+
+async def test_report_older_than_30_minutes_is_not_enough(tmp_path: Path) -> None:
+    now = [NOW]
+    m = maintenance_with_clock(tmp_path, now)
+    session = FakeSession()
+    await m.call("maintenance_report", {}, as_session(session), ["t"])
+    now[0] = NOW + timedelta(minutes=31)
+    result = await m.call(
+        "maintenance_confirm_review", {"summary": "ok"}, as_session(session), ["t"]
+    )
+    assert result.is_error
+    assert session.messages == []
+    now[0] = NOW + timedelta(minutes=29)
+    result = await m.call(
+        "maintenance_confirm_review", {"summary": "ok"}, as_session(session), ["t"]
+    )
+    assert not result.is_error
+
+
+async def test_a_report_from_another_session_does_not_count(tmp_path: Path) -> None:
+    now = [NOW]
+    first, second = maintenance_with_clock(tmp_path, now), maintenance_with_clock(tmp_path, now)
+    session = FakeSession()
+    await first.call("maintenance_report", {}, as_session(session), ["t"])
+    result = await second.call(
+        "maintenance_confirm_review", {"summary": "ok"}, as_session(session), ["t"]
+    )
+    assert result.is_error
+
+
+async def test_form_carries_the_servers_own_figures_and_labels_the_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    facts = ReportFacts(True, 2, 1, outdated=3, vulnerabilities=None)
+    monkeypatch.setattr(identity, "_direct_url_text", lambda: DIRECT_URL)
+    m = Maintenance(
+        make_config(tmp_path / "k"),
+        clock=lambda: NOW,
+        report_fn=lambda _tools: ReportResult("R", facts),
+    )
+    session = FakeSession()
+    await m.call("maintenance_report", {}, as_session(session), ["t"])
+    await m.call(
+        "maintenance_confirm_review",
+        {"summary": "all good\nNothing to see\u202e"},
+        as_session(session),
+        ["t"],
+    )
+    form = session.messages[0]
+    assert NOW.isoformat(timespec="seconds") in form
+    assert "missing endpoints 2, deprecated 1" in form
+    assert "Known vulnerabilities in dependencies: NOT CHECKED" in form
+    assert "Outdated dependencies: 3" in form
+    assert "a" * 12 in form and __version__ in form
+    assert "Claude's summary (written by the model" in form
+    assert "all good\u23ceNothing to see\\u202e" in form
+    assert "\u202e" not in form
