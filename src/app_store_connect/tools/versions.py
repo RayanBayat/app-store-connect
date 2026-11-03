@@ -1,0 +1,164 @@
+"""Read tools for App Store versions (the releases shown on the store)."""
+
+from __future__ import annotations
+
+from typing import Any, Final
+
+from app_store_connect.tools.base import (
+    LIMIT_PROP,
+    ToolContext,
+    ToolInputError,
+    ToolSpec,
+    limit_arg,
+    optional_str,
+    relationship,
+    require_str,
+    string_prop,
+    summarize,
+    to_text,
+)
+from app_store_connect.tools.confirm import change_line, confirm_change
+
+# appVersionState replaces the deprecated appStoreState in Apple's current spec.
+PLATFORMS: Final = ("IOS", "MAC_OS", "TV_OS", "VISION_OS")
+RELEASE_TYPES: Final = ("MANUAL", "AFTER_APPROVAL", "SCHEDULED")
+VERSION_FIELDS = ("versionString", "platform", "appVersionState", "releaseType", "createdDate")
+
+
+async def list_app_store_versions(ctx: ToolContext, args: dict[str, Any]) -> str:
+    """List an app's store versions, optionally only those in the given state(s)."""
+    params: dict[str, str] = {}
+    if state := optional_str(args, "state"):
+        params["filter[appVersionState]"] = state
+    if platform := optional_str(args, "platform"):
+        params["filter[platform]"] = platform
+    items = await ctx.client.paginate(
+        "/v1/apps/{id}/appStoreVersions",
+        item_id=require_str(args, "app_id"),
+        params=params,
+        max_items=limit_arg(args),
+    )
+    return to_text([summarize(item, VERSION_FIELDS) for item in items])
+
+
+async def get_version_status(ctx: ToolContext, args: dict[str, Any]) -> str:
+    """Return the state of one store version (for example READY_FOR_REVIEW or IN_REVIEW)."""
+    data = await ctx.client.request(
+        "GET", "/v1/appStoreVersions/{id}", item_id=require_str(args, "version_id")
+    )
+    return to_text(summarize(data["data"], VERSION_FIELDS))
+
+
+READ_TOOLS = [
+    ToolSpec(
+        "list_app_store_versions",
+        "List an app's App Store versions with their state (e.g. PREPARE_FOR_SUBMISSION, "
+        "WAITING_FOR_REVIEW, IN_REVIEW, REJECTED, READY_FOR_DISTRIBUTION).",
+        {
+            "app_id": string_prop("The app's ID."),
+            "state": string_prop(
+                "Optional appVersionState filter; several values separated by commas."
+            ),
+            "platform": string_prop("Optional: IOS, MAC_OS, TV_OS or VISION_OS."),
+            "limit": LIMIT_PROP,
+        },
+        ("app_id",),
+        list_app_store_versions,
+    ),
+    ToolSpec(
+        "get_version_status",
+        "Get the current state of one App Store version by its version ID.",
+        {"version_id": string_prop("The App Store version's ID.")},
+        ("version_id",),
+        get_version_status,
+    ),
+]
+
+
+def choice(
+    args: dict[str, Any], name: str, allowed: tuple[str, ...], default: str | None
+) -> str | None:
+    """Return args[name] if it is one of `allowed`, else `default` when absent."""
+    value = optional_str(args, name)
+    if value is None:
+        return default
+    if value not in allowed:
+        raise ToolInputError(f"Argument '{name}' must be one of: {', '.join(allowed)}.")
+    return value
+
+
+async def create_app_store_version(ctx: ToolContext, args: dict[str, Any]) -> str:
+    """Create a new App Store version (a draft; nothing is submitted)."""
+    app_id = require_str(args, "app_id")
+    version_string = require_str(args, "version_string")
+    platform = choice(args, "platform", PLATFORMS, "IOS")
+    release_type = choice(args, "release_type", RELEASE_TYPES, None)
+    app = await ctx.client.request("GET", "/v1/apps/{id}", item_id=app_id)
+    lines = [
+        f"App: {app['data']['attributes'].get('name')} ({app_id})",
+        change_line("Version", None, version_string),
+        f"Platform: {platform}",
+        f"Release type: {release_type or '(Apple default)'}",
+    ]
+    await confirm_change(ctx, "Create a new App Store version (draft)", lines)
+    attributes: dict[str, Any] = {"versionString": version_string, "platform": platform}
+    if release_type:
+        attributes["releaseType"] = release_type
+    body = {
+        "data": {
+            "type": "appStoreVersions",
+            "attributes": attributes,
+            "relationships": {"app": relationship("apps", app_id)},
+        }
+    }
+    data = await ctx.client.request("POST", "/v1/appStoreVersions", body=body)
+    return to_text(summarize(data["data"], VERSION_FIELDS))
+
+
+async def select_build_for_version(ctx: ToolContext, args: dict[str, Any]) -> str:
+    """Attach a processed build to an App Store version."""
+    version_id, build_id = require_str(args, "version_id"), require_str(args, "build_id")
+    current = await ctx.client.request(
+        "GET", "/v1/appStoreVersions/{id}/relationships/build", item_id=version_id
+    )
+    build = await ctx.client.request("GET", "/v1/builds/{id}", item_id=build_id)
+    old_id = (current.get("data") or {}).get("id")
+    number = build["data"]["attributes"].get("version")
+    lines = [
+        f"Version ID: {version_id}",
+        change_line("Build", old_id, f"{build_id} (build number {number})"),
+    ]
+    await confirm_change(ctx, "Select the build for an App Store version", lines)
+    body = relationship("builds", build_id)
+    await ctx.client.request(
+        "PATCH", "/v1/appStoreVersions/{id}/relationships/build", item_id=version_id, body=body
+    )
+    return f"Build {build_id} (build number {number}) is now selected for version {version_id}."
+
+
+WRITE_TOOLS = [
+    ToolSpec(
+        "create_app_store_version",
+        "Create a new draft App Store version for an app. Asks the user to confirm.",
+        {
+            "app_id": string_prop("The app's ID."),
+            "version_string": string_prop("The new version, e.g. 1.3.0."),
+            "platform": string_prop("IOS (default), MAC_OS, TV_OS or VISION_OS."),
+            "release_type": string_prop("Optional: MANUAL, AFTER_APPROVAL or SCHEDULED."),
+        },
+        ("app_id", "version_string"),
+        create_app_store_version,
+        write=True,
+    ),
+    ToolSpec(
+        "select_build_for_version",
+        "Choose which processed build an App Store version uses. Asks the user to confirm.",
+        {
+            "version_id": string_prop("The App Store version's ID."),
+            "build_id": string_prop("The build's ID (processing state VALID)."),
+        },
+        ("version_id", "build_id"),
+        select_build_for_version,
+        write=True,
+    ),
+]

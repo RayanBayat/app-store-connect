@@ -1,0 +1,133 @@
+"""Read tools for builds uploaded from Xcode / Transporter."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from app_store_connect.tools.base import (
+    LIMIT_PROP,
+    ToolContext,
+    ToolSpec,
+    limit_arg,
+    optional_str,
+    relationship,
+    require_str,
+    string_prop,
+    summarize,
+    to_text,
+)
+from app_store_connect.tools.beta import group_name
+from app_store_connect.tools.confirm import confirm_change
+
+BUILD_FIELDS = (
+    "version",
+    "uploadedDate",
+    "expirationDate",
+    "expired",
+    "processingState",
+    "minOsVersion",
+)
+
+
+async def list_builds(ctx: ToolContext, args: dict[str, Any]) -> str:
+    """List builds, filtered by app, version and/or processing state."""
+    params = {"sort": "-uploadedDate"}
+    if app_id := optional_str(args, "app_id"):
+        params["filter[app]"] = app_id
+    if version := optional_str(args, "version"):
+        params["filter[preReleaseVersion.version]"] = version
+    if build_number := optional_str(args, "build_number"):
+        params["filter[version]"] = build_number
+    if state := optional_str(args, "processing_state"):
+        params["filter[processingState]"] = state
+    items = await ctx.client.paginate("/v1/builds", params=params, max_items=limit_arg(args))
+    return to_text([summarize(item, BUILD_FIELDS) for item in items])
+
+
+async def get_build(ctx: ToolContext, args: dict[str, Any]) -> str:
+    """Return one build's details."""
+    data = await ctx.client.request("GET", "/v1/builds/{id}", item_id=require_str(args, "build_id"))
+    return to_text(summarize(data["data"], BUILD_FIELDS))
+
+
+READ_TOOLS = [
+    ToolSpec(
+        "list_builds",
+        "List builds (newest first). Filter by app, marketing version, build number or "
+        "processing state (PROCESSING, FAILED, INVALID, VALID).",
+        {
+            "app_id": string_prop("Only builds of this app."),
+            "version": string_prop("Marketing version, e.g. 1.2.0 (needs app_id)."),
+            "build_number": string_prop("Build number, e.g. 42."),
+            "processing_state": string_prop("PROCESSING, FAILED, INVALID or VALID."),
+            "limit": LIMIT_PROP,
+        },
+        (),
+        list_builds,
+    ),
+    ToolSpec(
+        "get_build",
+        "Get one build's details (processing state, expiry) by its build ID.",
+        {"build_id": string_prop("The build's ID.")},
+        ("build_id",),
+        get_build,
+    ),
+]
+
+
+async def build_label(ctx: ToolContext, build_id: str) -> str:
+    """Describe a build for confirmation forms, e.g. 'build number 42 (ID 123)'."""
+    data = await ctx.client.request("GET", "/v1/builds/{id}", item_id=build_id)
+    return f"build number {data['data']['attributes'].get('version')} (ID {build_id})"
+
+
+async def add_build_to_beta_group(ctx: ToolContext, args: dict[str, Any]) -> str:
+    """Make a build available to a TestFlight beta group."""
+    group_id, build_id = require_str(args, "beta_group_id"), require_str(args, "build_id")
+    name, label = await group_name(ctx, group_id), await build_label(ctx, build_id)
+    lines = [f"Build: {label}", f"Added to beta group: {name} ({group_id})"]
+    await confirm_change(ctx, "Add a build to a TestFlight beta group", lines)
+    body = {"data": [{"type": "builds", "id": build_id}]}
+    await ctx.client.request(
+        "POST", "/v1/betaGroups/{id}/relationships/builds", item_id=group_id, body=body
+    )
+    return f"Added {label} to beta group {name}."
+
+
+async def submit_build_for_beta_review(ctx: ToolContext, args: dict[str, Any]) -> str:
+    """Send a build to Apple's TestFlight beta app review (needed for external testers)."""
+    build_id = require_str(args, "build_id")
+    label = await build_label(ctx, build_id)
+    lines = [f"Build: {label}", "Action: submit to Apple for TestFlight beta app review"]
+    await confirm_change(ctx, "Submit a build for TestFlight beta review", lines)
+    body = {
+        "data": {
+            "type": "betaAppReviewSubmissions",
+            "relationships": {"build": relationship("builds", build_id)},
+        }
+    }
+    data = await ctx.client.request("POST", "/v1/betaAppReviewSubmissions", body=body)
+    return f"Submitted {label} for beta review (submission {data['data'].get('id')})."
+
+
+WRITE_TOOLS = [
+    ToolSpec(
+        "add_build_to_beta_group",
+        "Make a build available to a TestFlight beta group. Asks the user to confirm.",
+        {
+            "beta_group_id": string_prop("The beta group's ID."),
+            "build_id": string_prop("The build's ID."),
+        },
+        ("beta_group_id", "build_id"),
+        add_build_to_beta_group,
+        write=True,
+    ),
+    ToolSpec(
+        "submit_build_for_beta_review",
+        "Submit a build to Apple's TestFlight beta app review. Asks the user to confirm.",
+        {"build_id": string_prop("The build's ID.")},
+        ("build_id",),
+        submit_build_for_beta_review,
+        write=True,
+    ),
+]
