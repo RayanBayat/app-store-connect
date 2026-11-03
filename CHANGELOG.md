@@ -1,8 +1,11 @@
 # Changelog
 
-## 0.2.0
+## 0.2.0 (unreleased)
 
 Security fixes from an independent review.
+
+- Docs: the README now leads with what you can do and why it is safe, with a 3-step start;
+  `docs/design.md` explains how it works for contributors.
 
 - Supply chain: runtime dependencies (mcp, httpx, pyjwt, cryptography) are pinned exactly; CI
   installs with `--locked`, does not persist checkout credentials, pins the uv version, audits

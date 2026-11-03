@@ -1,24 +1,25 @@
 # Rules for AI agents working on this repository
 
 This is a Python MCP server for Apple's App Store Connect API. Before changing anything, read
-`docs/project-knowledge.md` (what we know, in plain words), `docs/security.md` and
-`MAINTENANCE.md`.
+`docs/design.md` (how it works), `docs/security.md` and `MAINTENANCE.md`.
 
-## Always log, and keep these files up to date (required)
+## Always log, and keep the docs up to date (required)
 
-This applies to every change, however small, and to every agent and human:
+This is a public repository: everything in it is written for the people who use or contribute
+to it. This applies to every change, however small, and to every agent and human:
 
-1. **Log it.** Add a dated entry at the top of `docs/worklog.md`: what you did and *why*, in one
-   or two plain sentences.
-2. **Update the knowledge.** If you learned something surprising, made or changed a decision, or
-   verified something from "Not verified yet", update `docs/project-knowledge.md` in the same
-   commit.
-3. **Update the rules.** If a rule, command or workflow changed, update this file (`AGENTS.md`)
-   and, if users are affected, `README.md`, `docs/security.md` or `MAINTENANCE.md`.
-4. **Write simply.** A very junior developer must understand it: short sentences, explain every
-   technical word the first time, and give the reason behind each rule.
+1. **Log it.** Add a line under "Unreleased" at the top of `CHANGELOG.md`: what changed for
+   users, and why it matters to them.
+2. **Keep the docs true.** If you changed how something works, learned a fact about Apple or MCP
+   that shapes the code, or verified an item under "Still to verify", update `docs/design.md`
+   in the same commit. If users are affected, also update `README.md`, `docs/security.md` or
+   `MAINTENANCE.md`.
+3. **Update the rules.** If a rule, command or workflow changed, update this file.
+4. **Write for the reader.** Only what users or contributors need. No private notes, personal
+   setups or internal history. Plain words a very junior developer understands: short sentences,
+   explain technical words, and give the reason behind each rule.
 
-A change without its log entry and doc updates is not finished.
+A change without its changelog line and doc updates is not finished.
 
 ## Standards
 
