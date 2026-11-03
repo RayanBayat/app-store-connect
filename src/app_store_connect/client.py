@@ -33,7 +33,9 @@ UPLOAD_TIMEOUT: Final = httpx.Timeout(120.0, connect=10.0)
 RETRY_STATUSES: Final = frozenset({429, 500, 502, 503, 504})
 # A POST may have been processed before a 5xx came back, so we never repeat it after one.
 SAFE_TO_REPEAT: Final = frozenset({"GET", "PATCH", "DELETE", "PUT"})
-ID_PATTERN: Final = re.compile(r"[A-Za-z0-9._-]{1,128}")
+# Apple IDs are numbers or UUIDs. No dots (so ".." cannot climb a path), no underscores, and
+# the first character is never a dash.
+ID_PATTERN: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,127}")
 
 Sleep = Callable[[float], Awaitable[None]]
 
@@ -71,6 +73,30 @@ def fill_template(template: str, item_id: str | None) -> str:
     if item_id is None:
         raise AscError(f"internal error: {template} needs an id")
     return template.replace("{id}", valid_id(item_id))
+
+
+def build_url(template: str, item_id: str | None) -> str:
+    """Return the full API URL for `template`, proving the path is exactly what we filled in.
+
+    Even with a checked ID, we parse the URL the way httpx will and compare the path, so a
+    surprise in URL normalisation (dot segments, encoding) can never reach another endpoint.
+    """
+    path = fill_template(template, item_id)
+    url = API_BASE_URL + path
+    if httpx.URL(url).path != path:
+        raise AscError("internal error: the request path changed while building the URL.")
+    return url
+
+
+def is_allowed_get_path(path: str) -> bool:
+    """True when `path` is a concrete path of a GET endpoint in ENDPOINTS_USED."""
+    for method, template in ENDPOINTS_USED:
+        if method != "GET":
+            continue
+        pattern = re.escape(template).replace(re.escape("{id}"), ID_PATTERN.pattern)
+        if re.fullmatch(pattern, path):
+            return True
+    return False
 
 
 def is_api_url(url: str) -> bool:
@@ -140,7 +166,7 @@ class AscClient:
         """Send one allowed request. `template` must be listed in ENDPOINTS_USED."""
         if (method, template) not in ENDPOINTS_USED:
             raise AscError(f"internal error: {method} {template} is not an allowed endpoint.")
-        url = API_BASE_URL + fill_template(template, item_id)
+        url = build_url(template, item_id)
         return await self._send(method, url, params, body)
 
     async def paginate(
@@ -155,7 +181,7 @@ class AscClient:
         if ("GET", template) not in ENDPOINTS_USED:
             raise AscError(f"internal error: GET {template} is not an allowed endpoint.")
         page_params: dict[str, str] | None = {"limit": str(min(max_items, 200)), **(params or {})}
-        url = API_BASE_URL + fill_template(template, item_id)
+        url = build_url(template, item_id)
         items: list[dict[str, Any]] = []
         for _ in range(MAX_PAGES):
             page = await self._send("GET", url, page_params, None)
@@ -166,6 +192,11 @@ class AscClient:
             if not isinstance(next_url, str) or not is_api_url(next_url):
                 raise AscError(
                     "Apple returned a pagination link to another host; not following it."
+                )
+            if not is_allowed_get_path(urlsplit(next_url).path):
+                raise AscError(
+                    "Apple returned a pagination link to an endpoint that is not an allowed "
+                    "endpoint; not following it."
                 )
             url, page_params = next_url, None  # the next link already contains the query
         return items[:max_items]

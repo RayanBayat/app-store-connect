@@ -231,3 +231,61 @@ async def test_presigned_upload_failure_status_reported(tmp_path: Path) -> None:
     client = make_client(tmp_path, lambda _r: httpx.Response(403))
     with pytest.raises(AscError, match="status 403"):
         await client.upload_part("PUT", "https://store.example.com/p", [], b"x")
+
+
+@pytest.mark.parametrize("bad", ["..", ".", "a.b", "a_b", "-x"])
+async def test_dot_and_underscore_ids_are_refused_before_any_request(
+    tmp_path: Path, bad: str
+) -> None:
+    """Regression (L1): app_id='..' used to climb out of /v1/apps/{id}/betaGroups."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        return httpx.Response(200, json={"data": []})
+
+    with pytest.raises(AscError, match="not a valid"):
+        await make_client(tmp_path, handler).paginate("/v1/apps/{id}/betaGroups", item_id=bad)
+    assert seen == []
+
+
+async def test_uuid_and_numeric_ids_are_accepted(tmp_path: Path) -> None:
+    client = make_client(tmp_path, lambda _r: httpx.Response(200, json={"data": []}))
+    await client.paginate(
+        "/v1/apps/{id}/betaGroups", item_id="6f9619ff-8b86-d011-b42d-00c04fc964ff"
+    )
+    await client.paginate("/v1/apps/{id}/betaGroups", item_id="1234567890")
+
+
+def test_filled_template_path_must_survive_url_parsing_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Defence in depth: even if an ID check were bypassed, the final path is compared."""
+    monkeypatch.setattr(client_module, "fill_template", lambda _t, _i: "/v1/apps/../users")
+    with pytest.raises(AscError, match="path"):
+        client_module.build_url("/v1/apps/{id}/betaGroups", "x")
+
+
+async def test_next_link_to_another_endpoint_on_apple_host_is_refused(tmp_path: Path) -> None:
+    """Regression (INFO): links.next pointing at /v1/users must not be followed."""
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        nxt = "https://api.appstoreconnect.apple.com/v1/users?x=1"
+        return httpx.Response(200, json={"data": [{"id": "1"}], "links": {"next": nxt}})
+
+    with pytest.raises(AscError, match="not an allowed endpoint"):
+        await make_client(tmp_path, handler).paginate("/v1/apps")
+    assert paths == ["/v1/apps"]
+
+
+async def test_next_link_matching_an_allowed_get_template_is_followed(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("cursor"):
+            return httpx.Response(200, json={"data": [{"id": "2"}]})
+        nxt = "https://api.appstoreconnect.apple.com/v1/apps/12/betaGroups?cursor=x"
+        return httpx.Response(200, json={"data": [{"id": "1"}], "links": {"next": nxt}})
+
+    items = await make_client(tmp_path, handler).paginate("/v1/apps/{id}/betaGroups", item_id="12")
+    assert [i["id"] for i in items] == ["1", "2"]
