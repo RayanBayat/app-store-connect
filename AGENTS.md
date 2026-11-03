@@ -1,7 +1,24 @@
 # Rules for AI agents working on this repository
 
-This is a Python MCP server for Apple's App Store Connect API. Read `docs/security.md` and
-`MAINTENANCE.md` before changing anything.
+This is a Python MCP server for Apple's App Store Connect API. Before changing anything, read
+`docs/project-knowledge.md` (what we know, in plain words), `docs/security.md` and
+`MAINTENANCE.md`.
+
+## Always log, and keep these files up to date (required)
+
+This applies to every change, however small, and to every agent and human:
+
+1. **Log it.** Add a dated entry at the top of `docs/worklog.md`: what you did and *why*, in one
+   or two plain sentences.
+2. **Update the knowledge.** If you learned something surprising, made or changed a decision, or
+   verified something from "Not verified yet", update `docs/project-knowledge.md` in the same
+   commit.
+3. **Update the rules.** If a rule, command or workflow changed, update this file (`AGENTS.md`)
+   and, if users are affected, `README.md`, `docs/security.md` or `MAINTENANCE.md`.
+4. **Write simply.** A very junior developer must understand it: short sentences, explain every
+   technical word the first time, and give the reason behind each rule.
+
+A change without its log entry and doc updates is not finished.
 
 ## Standards
 
