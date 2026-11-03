@@ -25,7 +25,7 @@ def write_raw(state: Path, days_ago: int, tools: list[str] | None = None) -> Non
     data = {
         "schema": 1,
         "reviewed_at": (NOW - timedelta(days=days_ago)).isoformat(),
-        "upstream_version": "0.22.0",
+        "spec_version": "0.22.0",
         "outcome": "ok",
         "tools": tools or [],
         "history": [],
@@ -99,7 +99,7 @@ def test_stamp_writes_strict_permissions_and_expected_fields(state: Path) -> Non
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["schema"] == 1
     assert data["reviewed_at"] == "2026-11-03T12:00:00+01:00"
-    assert data["upstream_version"] == "0.22.0"
+    assert data["spec_version"] == "0.22.0"
     assert data["tools"] == ["a", "b"]
     assert data["history"] == []
     assert [p.name for p in state.iterdir()] == ["review.json"]
@@ -135,7 +135,7 @@ def test_stamp_without_tools_keeps_previous_snapshot(state: Path) -> None:
     loaded = load_review()
     assert isinstance(loaded, Review)
     assert loaded.tools == ("a", "b")
-    assert loaded.history[0].upstream_version == "0.22.0"
+    assert loaded.history[0].spec_version == "0.22.0"
 
 
 def test_history_is_capped_at_12_newest_first(state: Path) -> None:
@@ -144,4 +144,4 @@ def test_history_is_capped_at_12_newest_first(state: Path) -> None:
     loaded = load_review()
     assert loaded is not None
     assert len(loaded.history) == review.HISTORY_LIMIT == 12
-    assert loaded.history[0].upstream_version == "v13"
+    assert loaded.history[0].spec_version == "v13"

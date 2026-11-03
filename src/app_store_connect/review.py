@@ -36,7 +36,7 @@ class HistoryEntry:
     """A past review, kept only so a maintainer can see how reviews went over time."""
 
     reviewed_at: str
-    upstream_version: str
+    spec_version: str
     outcome: str
 
 
@@ -45,7 +45,7 @@ class Review:
     """The latest review plus a short history of earlier ones."""
 
     reviewed_at: datetime
-    upstream_version: str
+    spec_version: str
     outcome: str
     tools: tuple[str, ...] = ()
     history: tuple[HistoryEntry, ...] = ()
@@ -89,7 +89,7 @@ def _history_from_json(raw: object) -> tuple[HistoryEntry, ...]:
             entries.append(
                 HistoryEntry(
                     reviewed_at=str(item.get("reviewed_at", "")),
-                    upstream_version=str(item.get("upstream_version", "")),
+                    spec_version=str(item.get("spec_version", "")),
                     outcome=str(item.get("outcome", "")),
                 )
             )
@@ -105,7 +105,7 @@ def _review_from_json(data: Any) -> Review:
         raise TypeError("tools must be a list")
     return Review(
         reviewed_at=parse_time(data["reviewed_at"]),
-        upstream_version=str(data.get("upstream_version", "")),
+        spec_version=str(data.get("spec_version", "")),
         outcome=str(data.get("outcome", "")),
         tools=tuple(str(name) for name in tools),
         history=_history_from_json(data.get("history")),
@@ -155,7 +155,7 @@ def check_review(review: Review | None, now: datetime, max_days: int) -> ReviewC
 def build_review(
     previous: Review | None,
     now: datetime,
-    upstream_version: str,
+    spec_version: str,
     outcome: str,
     tools: list[str] | None,
 ) -> Review:
@@ -166,13 +166,13 @@ def build_review(
         old_tools = previous.tools
         entry = HistoryEntry(
             previous.reviewed_at.isoformat(timespec="seconds"),
-            previous.upstream_version,
+            previous.spec_version,
             previous.outcome,
         )
         history = [entry, *previous.history]
     return Review(
         reviewed_at=now,
-        upstream_version=upstream_version,
+        spec_version=spec_version,
         outcome=outcome,
         tools=tuple(sorted(set(tools))) if tools is not None else old_tools,
         history=tuple(history[:HISTORY_LIMIT]),
@@ -184,13 +184,13 @@ def _to_json(review: Review) -> dict[str, Any]:
     return {
         "schema": SCHEMA,
         "reviewed_at": review.reviewed_at.isoformat(timespec="seconds"),
-        "upstream_version": review.upstream_version,
+        "spec_version": review.spec_version,
         "outcome": review.outcome,
         "tools": list(review.tools),
         "history": [
             {
                 "reviewed_at": h.reviewed_at,
-                "upstream_version": h.upstream_version,
+                "spec_version": h.spec_version,
                 "outcome": h.outcome,
             }
             for h in review.history
@@ -214,10 +214,8 @@ def write_review(review: Review, path: Path | None = None) -> None:
         raise
 
 
-def stamp_review(
-    now: datetime, upstream_version: str, outcome: str, tools: list[str] | None
-) -> Review:
+def stamp_review(now: datetime, spec_version: str, outcome: str, tools: list[str] | None) -> Review:
     """Record a completed review and return it."""
-    review = build_review(load_review(), now, upstream_version, outcome, tools)
+    review = build_review(load_review(), now, spec_version, outcome, tools)
     write_review(review)
     return review
