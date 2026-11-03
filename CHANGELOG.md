@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+- New `get_app_availability`: see in which countries an app is on sale, and why not. It lists
+  every territory with Apple's reasons in plain English, a one-line summary, and the app's
+  price (or "no price set"), so you can see why the App Store shows "not found" for a
+  "Ready for Sale" app.
+- New change tools `set_territory_availability` (switch the app on or off in chosen countries)
+  and `set_free_price` (make a free app free in every country). Both show exactly what will
+  change and wait for your Accept; neither exists unless `ASC_ALLOW_WRITES` is on.
+- `get_app_info_localizations` no longer marks Apple's own values (such as states and age
+  ratings) as untrusted text; only text that people write is marked.
+
 ## 0.2.0 (2026-11-03)
 
 Security fixes from an independent review.

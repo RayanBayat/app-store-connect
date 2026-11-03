@@ -4,16 +4,28 @@ from __future__ import annotations
 
 from app_store_connect.tools import (
     apps,
+    availability,
     beta,
     builds,
     localizations,
+    pricing,
     reviews,
     screenshots,
     versions,
 )
 from app_store_connect.tools.base import ToolSpec
 
-_MODULES = (apps, versions, builds, beta, localizations, screenshots, reviews)
+_MODULES = (
+    apps,
+    versions,
+    builds,
+    beta,
+    localizations,
+    screenshots,
+    reviews,
+    availability,
+    pricing,
+)
 
 
 def read_tools() -> list[ToolSpec]:

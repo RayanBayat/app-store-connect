@@ -50,8 +50,8 @@ Add `-e ASC_ALLOW_WRITES=1` to the install command. To allow screenshot uploads,
 
 | | Tools |
 |---|---|
-| **Read** (always on) | Apps, App Store versions and their status, builds, TestFlight groups and testers, store texts per language, screenshot sets, customer reviews, review submissions |
-| **Change** (opt-in, you approve each) | Edit store texts, add a language, change the primary language, create a version, pick its build, add or remove TestFlight testers, add a build to a group, submit for beta review, submit for App Review, reply to a customer review, upload screenshots |
+| **Read** (always on) | Apps, App Store versions and their status, builds, TestFlight groups and testers, store texts per language, screenshot sets, customer reviews, review submissions, **where an app is on sale and why not, and its price** |
+| **Change** (opt-in, you approve each) | Edit store texts, add a language, change the primary language, create a version, pick its build, add or remove TestFlight testers, add a build to a group, submit for beta review, submit for App Review, reply to a customer review, upload screenshots, switch an app on or off in chosen countries, make a free app free everywhere |
 | **Maintenance** | Status, the monthly report, and confirming the review |
 
 Customer reviews and other text written by people outside your team are marked as untrusted, so Claude won't follow instructions hidden inside them.

@@ -16,13 +16,13 @@ A short guide for contributors: how the server works, where the code lives, and 
 - **Read (always on):** `list_apps`, `get_app`, `list_app_store_versions`, `get_version_status`,
   `list_builds`, `get_build`, `list_beta_groups`, `list_beta_testers`,
   `get_version_localizations`, `get_app_info_localizations`, `list_screenshot_sets`,
-  `list_customer_reviews`, `get_review_submissions`.
+  `list_customer_reviews`, `get_review_submissions`, `get_app_availability`.
 - **Change (only with `ASC_ALLOW_WRITES`, each asks the human):** `update_version_localization`,
   `update_app_info_localization`, `create_version_localization`, `create_app_info_localization`,
   `update_app_primary_locale`, `create_app_store_version`, `select_build_for_version`,
   `add_beta_tester`, `remove_beta_tester`, `add_build_to_beta_group`,
   `submit_build_for_beta_review`, `submit_for_app_review`, `reply_to_customer_review`,
-  `upload_screenshot`.
+  `upload_screenshot`, `set_territory_availability`, `set_free_price`.
 - **Maintenance:** `maintenance_status`, `maintenance_report`, `maintenance_confirm_review`.
 
 ## Asking the human: two protocol versions
@@ -42,6 +42,15 @@ The sealed state is encrypted, tied to the exact tool, arguments and form text, 
 - **Many Apple documentation pages are rendered with JavaScript** and can't be read by scripts. The monthly report therefore links to Apple's API release notes for a human to skim.
 - **The API spec** is published as a zip on developer.apple.com. The `network` test checks every endpoint we use against it, and the report compares versions.
 
+## Availability and price
+
+An app can be "Ready for Sale" and still be missing from a country's App Store. Two things cause it, and `get_app_availability` shows both.
+
+- **Availability** (`tools/availability.py`): one record per territory (`/v1/apps/{id}/appAvailabilityV2`, then `/v2/appAvailabilities/{id}/territoryAvailabilities`). Each has `available`, `releaseDate` and `contentStatuses`, Apple's reasons (for example `MISSING_RATING`). `STATUS_HINTS` turns every status in spec 4.5.1 into plain words; an unknown status says so instead of guessing.
+- **Price** (`tools/pricing.py`): an app with no price schedule has no price. The schedule has a base territory and a manual price there; Apple derives the other countries from it.
+
+Changing it: `set_territory_availability` patches each territory (`PATCH /v1/territoryAvailabilities/{id}`, attribute `available`). If the app has no availability yet there is nothing to patch, so it uses the create call (`POST /v2/appAvailabilities`) and only to switch territories on. Territory codes are checked against what Apple returns before any form is shown. `set_free_price` posts a price schedule whose base price is the price point with customer price 0 (`POST /v1/appPriceSchedules`), and refuses to replace an existing paid price.
+
 ## The monthly report
 
 `report.py` builds it:
@@ -55,6 +64,7 @@ Every fetch has a size cap and a timeout. Anything that couldn't be checked is s
 ## Still to verify
 
 - **Screenshot upload host.** Uploads may only go to hosts ending in `.apple.com` (`UPLOAD_HOST_SUFFIX` in `client.py`). Confirm this on a real upload.
+- **Availability and price writes** have only been tested against mocks. Check on a real app: that the territory availability IDs pass `valid_id` (they are encoded by Apple), that `availableInNewTerritories: false` is the right default for the create call, and that a schedule with a free base price really makes every country free.
 - **Some newer language codes** in `tools/locales.py` (for example `bn-BD`, `or-IN`), which haven't been checked against Apple's code table.
 
 ## Where things are
@@ -62,7 +72,7 @@ Every fetch has a size cap and a timeout. Anything that couldn't be checked is s
 | Path | What it does |
 |---|---|
 | `server.py` | Tool list, the monthly gate, dispatching calls |
-| `tools/` | One file per area: apps, versions, builds, beta, localizations, screenshots, reviews |
+| `tools/` | One file per area: apps, versions, builds, beta, localizations, screenshots, reviews, availability (with territories), pricing |
 | `confirmflow.py`, `tools/confirm.py` | Human approval on both protocol versions |
 | `client.py`, `spec.py` | Talking to Apple; the allowed endpoint list |
 | `auth.py`, `config.py` | Signing; settings and key checks |

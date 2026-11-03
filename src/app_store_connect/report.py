@@ -56,6 +56,11 @@ USED_ATTRIBUTES: Final[dict[str, tuple[str, ...]]] = {
     "AppInfoLocalization": localizations.INFO_FIELDS,
     "CustomerReview": (*reviews.REVIEW_FIELDS, "title", "body"),
     "ReviewSubmission": ("platform", "state", "submittedDate"),
+    "AppAvailabilityV2": ("availableInNewTerritories",),
+    "TerritoryAvailability": ("available", "releaseDate", "contentStatuses"),
+    "Territory": ("currency",),
+    "AppPricePointV3": ("customerPrice",),
+    "AppPriceV2": ("startDate", "endDate"),
 }
 
 

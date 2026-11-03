@@ -45,6 +45,11 @@ ENDPOINTS_USED: Final[frozenset[Endpoint]] = frozenset(
         ("GET", "/v1/appScreenshotSets/{id}/appScreenshots"),
         ("GET", "/v1/apps/{id}/customerReviews"),
         ("GET", "/v1/apps/{id}/reviewSubmissions"),
+        ("GET", "/v1/apps/{id}/appAvailabilityV2"),
+        ("GET", "/v2/appAvailabilities/{id}/territoryAvailabilities"),
+        ("GET", "/v1/apps/{id}/appPriceSchedule"),
+        ("GET", "/v1/appPriceSchedules/{id}/baseTerritory"),
+        ("GET", "/v1/appPriceSchedules/{id}/manualPrices"),
         # --- reads used by write tools to show "old value -> new value" ---
         ("GET", "/v1/appStoreVersionLocalizations/{id}"),
         ("GET", "/v1/appInfoLocalizations/{id}"),
@@ -53,6 +58,8 @@ ENDPOINTS_USED: Final[frozenset[Endpoint]] = frozenset(
         ("GET", "/v1/betaGroups/{id}"),
         ("GET", "/v1/betaTesters/{id}"),
         ("GET", "/v1/appScreenshotSets/{id}"),
+        ("GET", "/v1/territories"),
+        ("GET", "/v1/apps/{id}/appPricePoints"),
         # --- write tools (only registered when ASC_ALLOW_WRITES is on) ---
         ("PATCH", "/v1/appStoreVersionLocalizations/{id}"),
         ("PATCH", "/v1/appInfoLocalizations/{id}"),
@@ -71,6 +78,9 @@ ENDPOINTS_USED: Final[frozenset[Endpoint]] = frozenset(
         ("PATCH", "/v1/apps/{id}"),
         ("POST", "/v1/appScreenshots"),
         ("PATCH", "/v1/appScreenshots/{id}"),
+        ("PATCH", "/v1/territoryAvailabilities/{id}"),
+        ("POST", "/v2/appAvailabilities"),
+        ("POST", "/v1/appPriceSchedules"),
     }
 )
 
