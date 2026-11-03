@@ -10,7 +10,7 @@ import pytest
 
 from app_store_connect import client as client_module
 from app_store_connect.auth import TokenProvider
-from app_store_connect.client import AscApiError, AscClient, AscError
+from app_store_connect.client import AscApiError, AscClient, AscError, format_api_error
 
 from .helpers import make_config
 
@@ -291,3 +291,29 @@ async def test_next_link_matching_an_allowed_get_template_is_followed(tmp_path: 
 
     items = await make_client(tmp_path, handler).paginate("/v1/apps/{id}/betaGroups", item_id="12")
     assert [i["id"] for i in items] == ["1", "2"]
+
+
+def test_error_message_includes_apples_associated_reasons() -> None:
+    body = {
+        "errors": [
+            {
+                "title": "The provided entity is not in a valid state",
+                "detail": "This resource cannot be reviewed.",
+                "meta": {
+                    "associatedErrors": {
+                        "/v1/appStoreVersions/v1": [
+                            {
+                                "title": "Missing attribute",
+                                "detail": "You must provide a value for 'copyright'.",
+                            }
+                        ]
+                    }
+                },
+            }
+        ]
+    }
+    message = format_api_error(
+        409, "POST", "https://api.appstoreconnect.apple.com/v1/reviewSubmissionItems", body
+    )
+    assert "Apple lists these problems" in message
+    assert "You must provide a value for 'copyright'." in message

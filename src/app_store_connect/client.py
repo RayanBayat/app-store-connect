@@ -112,17 +112,43 @@ def is_api_url(url: str) -> bool:
     return parts.scheme == "https" and parts.hostname == API_HOST and parts.port in (None, 443)
 
 
+MAX_REASONS = 20
+
+
+def associated_reasons(item: dict[str, Any]) -> list[str]:
+    """Return the problems Apple lists under `meta.associatedErrors`.
+
+    For some refusals (for example "this version is not in a valid state for review") the
+    top-level error says nothing useful; the real reasons, such as a missing copyright, are here.
+    """
+    associated = (item.get("meta") or {}).get("associatedErrors")
+    if not isinstance(associated, dict):
+        return []
+    reasons: list[str] = []
+    for errors in associated.values():
+        for error in errors if isinstance(errors, list) else []:
+            if isinstance(error, dict):
+                text = f"{error.get('title', '')}: {error.get('detail', '')}".strip(": ")
+                if text:
+                    reasons.append(text)
+    return reasons
+
+
 def format_api_error(status: int, method: str, url: str, body: dict[str, Any] | None) -> str:
     """Build a readable message from Apple's `errors[]` array (or a generic one)."""
     path = urlsplit(url).path
     details: list[str] = []
+    reasons: list[str] = []
     for item in (body or {}).get("errors", []):
         if isinstance(item, dict):
             title, detail = item.get("title", ""), item.get("detail", "")
             details.append(f"{title}: {detail}".strip(": "))
+            reasons.extend(associated_reasons(item))
     parts = [f"Apple API error {status} on {method} {path}."]
     if details:
         parts.append(" ".join(details))
+    if reasons:
+        parts.append("Apple lists these problems: " + "; ".join(reasons[:MAX_REASONS]) + ".")
     if status in _HINTS:
         parts.append(_HINTS[status])
     return " ".join(parts)

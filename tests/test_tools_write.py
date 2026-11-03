@@ -71,6 +71,7 @@ def build_fake() -> FakeApple:
             )
         ),
     )
+    fake.on("GET", "/v1/apps/1/reviewSubmissions", {"data": []})  # no open draft by default
     fake.on("POST", "/v1/reviewSubmissions", one({"type": "reviewSubmissions", "id": "rs1"}), 201)
     fake.on(
         "POST",
@@ -309,3 +310,33 @@ async def test_bad_email_is_rejected_before_any_request(tmp_path: Path) -> None:
         )
     assert result.is_error
     assert fake.seen == []
+
+
+async def test_submit_reuses_an_open_draft_submission(tmp_path: Path) -> None:
+    """A failed earlier attempt leaves an empty draft; Apple allows only one, so reuse it."""
+    fake, answer = build_fake(), accept()
+    fake.on(
+        "GET",
+        "/v1/apps/1/reviewSubmissions",
+        {
+            "data": [
+                resource("reviewSubmissions", "rs-old", state="READY_FOR_REVIEW", platform="IOS")
+            ]
+        },
+    )
+    fake.on(
+        "PATCH",
+        "/v1/reviewSubmissions/rs-old",
+        one(resource("reviewSubmissions", "rs-old", state="WAITING_FOR_REVIEW")),
+    )
+    async with connected(tmp_path, fake, allow_writes=True, elicit=answer) as client:
+        result = await client.call_tool(
+            "submit_for_app_review", {"app_id": "1", "version_id": "v1"}
+        )
+    assert not result.is_error, text_of(result)
+    writes = [(w.method, w.path) for w in fake.writes()]
+    assert ("POST", "/v1/reviewSubmissions") not in writes
+    assert writes == [
+        ("POST", "/v1/reviewSubmissionItems"),
+        ("PATCH", "/v1/reviewSubmissions/rs-old"),
+    ]

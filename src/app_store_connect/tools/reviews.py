@@ -126,8 +126,27 @@ async def require_version_of_app(ctx: ToolContext, app_id: str, version_id: str)
         raise ToolRefusedError(f"Version {version_id} does not belong to app {app_id}.")
 
 
+async def open_draft_submission(ctx: ToolContext, app_id: str, platform: str) -> str | None:
+    """Return an existing draft submission (state READY_FOR_REVIEW) for this platform, if any.
+
+    An earlier attempt that failed halfway leaves such a draft behind, and Apple allows only one
+    open draft per platform, so we reuse it instead of creating a second one.
+    """
+    submissions = await ctx.client.paginate(
+        "/v1/apps/{id}/reviewSubmissions", item_id=app_id, max_items=MAX_LIMIT
+    )
+    for submission in submissions:
+        attributes = submission.get("attributes") or {}
+        if attributes.get("state") == "READY_FOR_REVIEW" and attributes.get("platform") == platform:
+            return str(submission["id"])
+    return None
+
+
 async def run_submission(ctx: ToolContext, app_id: str, version_id: str, platform: str) -> str:
-    """Create the review submission, add the version to it, and submit it."""
+    """Create (or reuse) the review submission, add the version to it, and submit it."""
+    existing = await open_draft_submission(ctx, app_id, platform)
+    if existing is not None:
+        return await add_and_submit(ctx, existing, version_id)
     create = {
         "data": {
             "type": "reviewSubmissions",
@@ -136,7 +155,11 @@ async def run_submission(ctx: ToolContext, app_id: str, version_id: str, platfor
         }
     }
     submission = (await ctx.client.request("POST", "/v1/reviewSubmissions", body=create))["data"]
-    submission_id = str(submission["id"])
+    return await add_and_submit(ctx, str(submission["id"]), version_id)
+
+
+async def add_and_submit(ctx: ToolContext, submission_id: str, version_id: str) -> str:
+    """Add the version to the submission and send it to App Review."""
     try:
         item = {
             "data": {

@@ -2,6 +2,10 @@
 
 ## 0.3.0 (unreleased)
 
+- When Apple refuses a request, the error now includes Apple's detailed list of problems
+  (for example a missing copyright), not just the headline.
+- `submit_for_app_review` reuses an open, empty draft submission left by an earlier failed attempt
+  instead of trying to create a second one.
 - Docs: the README is now plain reference documentation (what it does, setup, tools, settings).
 - New `get_app_availability`: see in which countries an app is on sale, and why not. It lists
   every territory with Apple's reasons in plain English, a one-line summary, and the app's
