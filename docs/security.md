@@ -17,10 +17,24 @@ This server holds a key that can change a real App Store listing, so the design 
 1. **Read-only by default.** Without `ASC_ALLOW_WRITES`, the write tools are not even registered.
    The model cannot see them or call them.
 2. **A human confirms every change.** Write tools use MCP elicitation: your client shows a form
-   with the old value and the new value (or the action and its target). There is no `confirm`
+   with the full old value and new value (or the action and its target). There is no `confirm`
    argument, so the model cannot say yes for you. No answer, a decline, a cancel or a client
-   without form support all mean nothing is sent. Public and irreversible actions say so in
-   the form.
+   without form support all mean nothing is sent, and the error says which of these it was.
+   Public and irreversible actions say so in the form. How the form reaches you depends on the
+   protocol version the client negotiated; both are supported and tested:
+   - **Up to 2025-11-25 (back-channel):** the server sends the form to the client in the middle
+     of the tool call and waits for the answer.
+   - **2026-07-28 (input_required):** a server may not send requests during a call. The tool
+     returns an `input_required` result that carries the form; the client shows it and calls
+     the same tool again with your answer and an opaque `request_state`. The retry comes from
+     outside, so it is not trusted: `request_state` is encrypted and authenticated (the SDK's
+     AES-GCM codec, a random key per process), bound to the tool name and the exact arguments,
+     and expires after 10 minutes. It also holds a single-use nonce and a fingerprint of the
+     exact form you saw. On the retry the server rebuilds the change from the current arguments
+     and the current data at Apple; if anything differs from what you saw (for example the old
+     value changed meanwhile) it shows you a fresh form instead of acting. Only an explicit
+     accept with the approval box ticked proceeds; a decline, cancel, missing or wrong answer, a
+     tampered, expired or replayed state all send nothing.
 3. **No arbitrary requests.** The HTTP client refuses any (method, path) that is not in
    `ENDPOINTS_USED`. A test checks that this list matches the code.
 4. **No Apple ID login.** Only the official API key is used. There is no web session anywhere.

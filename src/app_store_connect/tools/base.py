@@ -17,7 +17,7 @@ from typing import Any, Final
 import mcp_types as types
 from mcp.server.session import ServerSession
 
-from app_store_connect.client import AscClient
+from app_store_connect.client import AscClient, valid_id
 from app_store_connect.config import Config
 from app_store_connect.confirmflow import ConfirmationBook
 from app_store_connect.textsafe import wrap_strings
@@ -105,6 +105,11 @@ def require_str(args: dict[str, Any], name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ToolInputError(f"Argument '{name}' is required and must be a non-empty string.")
     return value.strip()
+
+
+def require_id(args: dict[str, Any], name: str) -> str:
+    """Return a required argument that must be a plain Apple ID (checked before anything runs)."""
+    return valid_id(require_str(args, name))
 
 
 def optional_str(args: dict[str, Any], name: str) -> str | None:

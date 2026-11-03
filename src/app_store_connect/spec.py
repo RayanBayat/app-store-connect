@@ -66,6 +66,9 @@ ENDPOINTS_USED: Final[frozenset[Endpoint]] = frozenset(
         ("POST", "/v1/reviewSubmissionItems"),
         ("PATCH", "/v1/reviewSubmissions/{id}"),
         ("POST", "/v1/customerReviewResponses"),
+        ("POST", "/v1/appStoreVersionLocalizations"),
+        ("POST", "/v1/appInfoLocalizations"),
+        ("PATCH", "/v1/apps/{id}"),
         ("POST", "/v1/appScreenshots"),
         ("PATCH", "/v1/appScreenshots/{id}"),
     }

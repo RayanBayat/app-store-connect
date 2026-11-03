@@ -102,7 +102,8 @@ and do at least these:
 `list_customer_reviews`, `get_review_submissions`.
 
 **Only with `ASC_ALLOW_WRITES=1` (each one asks you first):** `update_version_localization`,
-`update_app_info_localization`, `create_app_store_version`, `select_build_for_version`,
+`update_app_info_localization`, `create_version_localization`, `create_app_info_localization`,
+`update_app_primary_locale`, `create_app_store_version`, `select_build_for_version`,
 `add_beta_tester`, `remove_beta_tester`, `add_build_to_beta_group`, `submit_build_for_beta_review`,
 `submit_for_app_review`, `reply_to_customer_review`, `upload_screenshot`.
 

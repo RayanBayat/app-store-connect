@@ -33,6 +33,8 @@ and often with Conventional Commit messages.
   MCP elicitation first (`tools/confirm.py`). No `confirm` argument, ever.
 - The client only sends endpoints listed in `ENDPOINTS_USED` (`spec.py`). Add new ones only
   after verifying them against Apple's current OpenAPI spec, and add tests.
+- Confirmations must work on both protocol eras (back-channel up to 2025-11-25, `input_required` on
+  2026-07-28); `tests/test_confirm_eras.py` covers both. Never act on an unvalidated retry.
 - The `Authorization` header goes only to `api.appstoreconnect.apple.com`.
 - Never return or log tokens, keys or the issuer ID.
 - Never read real credentials, never contact the real Apple API from tests or tooling: use the

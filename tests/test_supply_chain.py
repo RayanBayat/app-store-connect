@@ -85,3 +85,16 @@ def test_maintenance_guide_covers_releases_pins_and_dependabot() -> None:
         if needle != "vX":
             assert needle in text, needle
     assert "git tag v" in text and "gh release create" in text
+
+
+def test_docs_describe_both_confirmation_eras() -> None:
+    security = " ".join(read("docs/security.md").split())
+    assert "input_required" in security and "back-channel" in security
+    assert "tests/test_confirm_eras.py" in read("AGENTS.md")
+    readme = read("README.md")
+    for tool in (
+        "create_version_localization",
+        "create_app_info_localization",
+        "update_app_primary_locale",
+    ):
+        assert tool in readme

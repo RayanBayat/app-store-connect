@@ -23,6 +23,16 @@ Security fixes from an independent review.
 - IDs may not contain dots or underscores (`..` escaped the path); pagination links must match
   an allowed GET endpoint; a version must belong to the app before it is submitted.
 - Report downloads are size-capped, OSV paging is limited and redirects are not followed.
+- Confirmation forms now work on MCP protocol 2026-07-28 (what Claude Code negotiates), where a
+  server cannot ask during a call: the tool returns `input_required` and the retry is checked
+  (sealed, single-use, bound to the exact change; a changed situation gets a fresh form). The
+  older back-channel path still works, and refusals say why.
+- The report checks only our direct dependencies for new releases, using PyPI's small releases
+  feed (the JSON API was too large for big packages); the vulnerability scan still covers every
+  installed package. A first review says "No earlier review".
+- New write tools: `create_version_localization`, `create_app_info_localization` (Apple requires
+  a name) and `update_app_primary_locale` (refused unless the app already has an app info
+  localization in that language). Locale codes are checked against a documented list.
 - Docs say plainly that the protections assume the AI agent cannot run commands as your user.
 
 ## 0.1.0

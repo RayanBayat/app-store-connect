@@ -10,12 +10,15 @@ from app_store_connect.tools.base import (
     ToolInputError,
     ToolSpec,
     optional_str,
+    relationship,
+    require_id,
     require_str,
     string_prop,
     summarize,
     to_text,
 )
 from app_store_connect.tools.confirm import change_line, confirm_change
+from app_store_connect.tools.locales import valid_locale
 
 VERSION_TEXT_FIELDS: Final = (
     "description", "keywords", "whatsNew", "promotionalText", "marketingUrl", "supportUrl",
@@ -69,16 +72,21 @@ async def get_app_info_localizations(ctx: ToolContext, args: dict[str, Any]) -> 
     return to_text(result)
 
 
+def check_limit(name: str, value: str) -> None:
+    """Refuse a value longer than Apple allows for `name`."""
+    if len(value) > FIELD_LIMITS[name]:
+        raise ToolInputError(
+            f"{name} is {len(value)} characters; Apple allows at most {FIELD_LIMITS[name]}."
+        )
+
+
 def requested_changes(args: dict[str, Any], fields: tuple[str, ...]) -> dict[str, str]:
     """Collect the text fields the model wants to change; at least one is required."""
     changes = {name: value for name in fields if (value := optional_str(args, name)) is not None}
     if not changes:
         raise ToolInputError(f"Give at least one of: {', '.join(fields)}.")
     for name, value in changes.items():
-        if len(value) > FIELD_LIMITS[name]:
-            raise ToolInputError(
-                f"{name} is {len(value)} characters; Apple allows at most {FIELD_LIMITS[name]}."
-            )
+        check_limit(name, value)
     return changes
 
 
@@ -131,6 +139,86 @@ async def update_app_info_localization(ctx: ToolContext, args: dict[str, Any]) -
     )
 
 
+VERSION_CREATE_ARGS: Final = {
+    "description": "description",
+    "keywords": "keywords",
+    "whats_new": "whatsNew",
+    "promotional_text": "promotionalText",
+    "marketing_url": "marketingUrl",
+    "support_url": "supportUrl",
+}  # tool argument -> Apple attribute
+INFO_CREATE_ARGS: Final = {
+    "subtitle": "subtitle",
+    "privacy_policy_url": "privacyPolicyUrl",
+}
+
+
+def collect_attributes(args: dict[str, Any], mapping: dict[str, str]) -> dict[str, str]:
+    """Collect the optional text arguments that were given (non-empty), checked against limits."""
+    attributes: dict[str, str] = {}
+    for arg, attribute in mapping.items():
+        value = optional_str(args, arg)
+        if value:
+            check_limit(attribute, value)
+            attributes[attribute] = value
+    return attributes
+
+
+async def confirm_creation(
+    ctx: ToolContext, title: str, context_lines: list[str], attributes: dict[str, str]
+) -> None:
+    """Show every field that will be set (in full, escaped), and ask the human."""
+    lines = [*context_lines]
+    lines += [change_line(n, None, v) for n, v in attributes.items() if n != "locale"]
+    await confirm_change(ctx, title, lines)
+
+
+def creation_body(
+    kind: str, attributes: dict[str, str], parent: tuple[str, str, str]
+) -> dict[str, Any]:
+    """The JSON:API body for creating a localization under its parent."""
+    relation, parent_kind, parent_id = parent
+    return {
+        "data": {
+            "type": kind,
+            "attributes": attributes,
+            "relationships": {relation: relationship(parent_kind, parent_id)},
+        }
+    }
+
+
+def created_text(data: dict[str, Any], attributes: dict[str, str]) -> str:
+    """The result shown to the model: what Apple created (text fields marked untrusted)."""
+    return "Created: " + to_text(summarize(data["data"], tuple(attributes), wrap=tuple(attributes)))
+
+
+async def create_version_localization(ctx: ToolContext, args: dict[str, Any]) -> str:
+    """Add a new language to an App Store version."""
+    version_id = require_id(args, "version_id")
+    locale = valid_locale(require_str(args, "locale"))
+    attributes = {"locale": locale, **collect_attributes(args, VERSION_CREATE_ARGS)}
+    context = [f"Version ID: {version_id}", f"New language: {locale}"]
+    await confirm_creation(ctx, "Add a language to an App Store version", context, attributes)
+    parent = ("appStoreVersion", "appStoreVersions", version_id)
+    body = creation_body("appStoreVersionLocalizations", attributes, parent)
+    data = await ctx.client.request("POST", "/v1/appStoreVersionLocalizations", body=body)
+    return created_text(data, attributes)
+
+
+async def create_app_info_localization(ctx: ToolContext, args: dict[str, Any]) -> str:
+    """Add a new language (name, subtitle, privacy URL) to an app's info."""
+    info_id = require_id(args, "app_info_id")
+    locale = valid_locale(require_str(args, "locale"))
+    name = require_str(args, "name")
+    check_limit("name", name)
+    attributes = {"locale": locale, "name": name, **collect_attributes(args, INFO_CREATE_ARGS)}
+    context = [f"App info ID: {info_id}", f"New language: {locale}"]
+    await confirm_creation(ctx, "Add a language to the app name / subtitle", context, attributes)
+    body = creation_body("appInfoLocalizations", attributes, ("appInfo", "appInfos", info_id))
+    data = await ctx.client.request("POST", "/v1/appInfoLocalizations", body=body)
+    return created_text(data, attributes)
+
+
 READ_TOOLS = [
     ToolSpec(
         "get_version_localizations",
@@ -178,6 +266,39 @@ WRITE_TOOLS = [
         },
         ("localization_id",),
         update_app_info_localization,
+        write=True,
+    ),
+    ToolSpec(
+        "create_version_localization",
+        "Add a new language to an App Store version (POST). Give a locale such as 'sv' or "
+        "'en-US' and any of the texts. Asks the user to confirm.",
+        {
+            "version_id": string_prop("The App Store version's ID."),
+            "locale": string_prop("App Store locale code, e.g. sv, en-US, zh-Hans."),
+            **{
+                arg: string_prop(f"The {attr}.", maxLength=FIELD_LIMITS[attr])
+                for arg, attr in VERSION_CREATE_ARGS.items()
+            },
+        },
+        ("version_id", "locale"),
+        create_version_localization,
+        write=True,
+    ),
+    ToolSpec(
+        "create_app_info_localization",
+        "Add a new language to an app's info (name, subtitle, privacy policy URL). Apple "
+        "requires a name. Asks the user to confirm.",
+        {
+            "app_info_id": string_prop("The app info's ID (see get_app_info_localizations)."),
+            "locale": string_prop("App Store locale code, e.g. sv, en-US, zh-Hans."),
+            "name": string_prop("The app name in that language.", maxLength=FIELD_LIMITS["name"]),
+            **{
+                arg: string_prop(f"The {attr}.", maxLength=FIELD_LIMITS[attr])
+                for arg, attr in INFO_CREATE_ARGS.items()
+            },
+        },
+        ("app_info_id", "locale", "name"),
+        create_app_info_localization,
         write=True,
     ),
 ]
