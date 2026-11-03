@@ -14,8 +14,8 @@ That server gives Claude an App Store Connect API key, which can change your sto
 ## Requirements
 
 - [Claude Code](https://claude.com/claude-code).
-- The App Store Connect MCP server, registered in Claude Code under the name **`asc`** (the hook matches `mcp__asc__*`).
-- `python3` 3.12 or newer. The hook uses only the standard library.
+- The App Store Connect MCP server, registered in Claude Code under the name **`asc`**.
+- `python3` 3.12 or newer. Nothing else to install for the monthly check: it uses only the standard library.
 - [`gh`](https://cli.github.com/), logged in (`gh auth login`). The review uses it to read releases and verify downloads.
 - [`uv`](https://docs.astral.sh/uv/), only for `scripts/probe.py`, which lists the server's tools.
 
@@ -35,20 +35,20 @@ To update the plugin later: `claude plugin marketplace update asc-mcp-maintenanc
 ## How it works
 
 ```
-Claude wants to call mcp__asc__something
+you use the App Store Connect server
         │
         ▼
-hook: scripts/asc_maint.py gate ── last review < 30 days ago? ── yes ──▶ call goes ahead
-        │ no (or never reviewed, or the check itself failed)
+reviewed in the last 30 days? ── yes ──▶ works as normal
+        │ no
         ▼
-call blocked: "review overdue, run the asc-mcp-maintenance skill"
+Claude asks for the monthly review first
         │
         ▼
-the review (SKILL.md): releases → dependencies + vulnerabilities → security diff
-                       → new/removed tools → Apple changes → report → your decision
+the review: releases → dependencies + vulnerabilities → security-relevant changes
+            → new/removed tools → Apple changes → report → your decision
         │
         ▼
-asc_maint.py stamp ──▶ tools unblock for another 30 days
+review recorded ──▶ good for another 30 days
 ```
 
 The gate **fails closed**: if the check can't run or crashes, the call is blocked rather than allowed.

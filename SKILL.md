@@ -5,7 +5,7 @@ description: Monthly maintenance review for the App Store Connect MCP server (se
 
 # App Store Connect MCP: monthly maintenance review
 
-**Why this exists:** the App Store Connect MCP server holds an API key that can change your App Store listing, testers and releases. It is third-party code that changes fast. A hook in this plugin blocks every `mcp__asc__*` tool once the last review is **30 days** old. That covers both cases: a server nobody touched for a month, and one used every day that would otherwise never be re-checked. This document is the review. When you finish it and stamp the result, the tools unblock.
+**Why this exists:** the App Store Connect MCP server holds an API key that can change your App Store listing, testers and releases. It is third-party code that changes fast. This plugin blocks every `mcp__asc__*` tool once the last review is **30 days** old. That covers both cases: a server nobody touched for a month, and one used every day that would otherwise never be re-checked. This document is the review. When you finish it and stamp the result, the tools unblock.
 
 Scripts live next to this file, in `<base>/scripts/`, where `<base>` is the base directory shown when this skill loads. Put downloads and temporary files in the session's scratchpad (`<scratch>` below), never inside a project.
 
@@ -96,7 +96,7 @@ For each **removed or renamed** tool, find everything that names it (deny rules 
 ## Step 6: Outside the server
 
 - **Apple:** read the [App Store Connect API release notes](https://developer.apple.com/documentation/appstoreconnectapi/app-store-connect-api-release-notes) for entries since the last review. Compare them with the spec version that `app-store-connect-mcp doctor --profile main` prints, and note new endpoints the server doesn't cover yet and anything Apple deprecated.
-- **Claude Code / MCP:** look for changes to MCP approvals (elicitation), permission rules or hooks that affect this setup.
+- **Claude Code / MCP:** look for changes to MCP approvals (elicitation), permission rules or plugin behaviour that affect this setup.
 - **Alternatives:** search briefly for an official Apple MCP server or a better-maintained alternative. Report what you find, but don't switch without the user.
 
 ## Step 7: This plugin itself
