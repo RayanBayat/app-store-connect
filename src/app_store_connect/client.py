@@ -13,6 +13,7 @@ Safety rules enforced here, in one place:
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import re
 from collections.abc import Awaitable, Callable
@@ -35,6 +36,12 @@ RETRY_STATUSES: Final = frozenset({429, 500, 502, 503, 504})
 SAFE_TO_REPEAT: Final = frozenset({"GET", "PATCH", "DELETE", "PUT"})
 # Apple IDs are numbers or UUIDs. No dots (so ".." cannot climb a path), no underscores, and
 # the first character is never a dash.
+# Apple's presigned screenshot uploads go to hosts under apple.com (they look like
+# store-NNN.blobstore.apple.com). This is Apple's upload host pattern as we understand it and
+# MUST BE VERIFIED ON THE FIRST REAL UPLOAD; if Apple uses another domain, change it here, in
+# this one place. Anything else (other domains, IP addresses) is refused, so a bad answer
+# cannot make the server call an internal address.
+UPLOAD_HOST_SUFFIX: Final = ".apple.com"
 ID_PATTERN: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,127}")
 
 Sleep = Callable[[float], Awaitable[None]]
@@ -131,6 +138,30 @@ def retry_delay(attempt: int, retry_after: str | None) -> float:
     return min(float(2**attempt), MAX_BACKOFF_SECONDS)
 
 
+def check_upload_target(method: str, url: str) -> None:
+    """Refuse any presigned upload that is not a PUT over https to an Apple upload host."""
+    if method != "PUT":
+        raise AscError("Apple gave an upload step that is not a PUT; refusing to use it.")
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    if parts.scheme != "https" or not host:
+        raise AscError("Apple gave an upload address that is not https; refusing to use it.")
+    try:
+        port = parts.port
+    except ValueError:
+        port = -1
+    if port not in (None, 443):
+        raise AscError("Apple gave an upload address with an unusual port; refusing to use it.")
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass  # not an IP address: good
+    else:
+        raise AscError("Apple gave an upload address that is an IP address; refusing to use it.")
+    if not host.endswith(UPLOAD_HOST_SUFFIX):
+        raise AscError("Apple gave an upload address outside apple.com; refusing to use it.")
+
+
 class AscClient:
     """Sends the allowed requests to Apple. Create one per server and reuse it."""
 
@@ -205,15 +236,13 @@ class AscClient:
         self, method: str, url: str, headers: list[tuple[str, str]], data: bytes
     ) -> None:
         """Send one chunk of a file to a presigned upload URL, with NO Authorization header."""
-        parts = urlsplit(url)
-        if parts.scheme != "https" or not parts.hostname:
-            raise AscError("Apple gave an upload address that is not https; refusing to use it.")
+        check_upload_target(method, url)
         safe = {k: v for k, v in headers if k.lower() not in {"authorization", "cookie"}}
         try:
             response = await self._uploads.request(method, url, headers=safe, content=data)
         except httpx.HTTPError as exc:
             raise AscError(f"Uploading a file part failed: {type(exc).__name__}.") from exc
-        if response.status_code >= 400:
+        if response.status_code >= 300:  # redirects are failures: we never follow them
             raise AscError(f"Uploading a file part failed with status {response.status_code}.")
 
     async def _send(

@@ -219,3 +219,28 @@ def test_repr_never_shows_key_id_or_issuer_id(env: dict[str, str]) -> None:
     assert KEY_ID not in repr(config)
     assert ISSUER not in repr(config)
     assert KEY_ID not in str(config)
+
+
+def test_asc_root_that_others_can_write_is_refused(env: dict[str, str], tmp_path: Path) -> None:
+    folder = tmp_path / "shots"
+    folder.mkdir()
+    folder.chmod(0o775)
+    with pytest.raises(ConfigError, match=r"ASC_ROOT.*writable"):
+        load_config({**env, "ASC_ROOT": str(folder)})
+    folder.chmod(0o757)
+    with pytest.raises(ConfigError, match=r"ASC_ROOT.*writable"):
+        load_config({**env, "ASC_ROOT": str(folder)})
+
+
+def test_asc_root_that_is_slash_or_home_is_refused(env: dict[str, str]) -> None:
+    Path.home().mkdir(parents=True, exist_ok=True)
+    Path.home().chmod(0o700)
+    for bad in ("/", str(Path.home()), "~"):
+        with pytest.raises(ConfigError, match=r"ASC_ROOT.*too broad"):
+            load_config({**env, "ASC_ROOT": bad})
+
+
+def test_private_asc_root_is_accepted(env: dict[str, str], tmp_path: Path) -> None:
+    folder = tmp_path / "shots"
+    folder.mkdir(mode=0o755)
+    assert load_config({**env, "ASC_ROOT": str(folder)}).root == folder

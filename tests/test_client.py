@@ -215,7 +215,9 @@ async def test_presigned_upload_has_no_authorization_header(tmp_path: Path) -> N
 
     client = make_client(tmp_path, handler)
     headers = [("Content-Type", "image/png"), ("Authorization", "Bearer sneaky")]
-    await client.upload_part("PUT", "https://store.example.com/part1?sig=abc", headers, b"data")
+    await client.upload_part(
+        "PUT", "https://store-001.blobstore.apple.com/part1?sig=abc", headers, b"data"
+    )
     assert "authorization" not in seen[0].headers
     assert seen[0].headers["content-type"] == "image/png"
     assert seen[0].content == b"data"
@@ -224,13 +226,13 @@ async def test_presigned_upload_has_no_authorization_header(tmp_path: Path) -> N
 async def test_presigned_upload_must_be_https(tmp_path: Path) -> None:
     client = make_client(tmp_path, lambda _r: httpx.Response(200))
     with pytest.raises(AscError, match="not https"):
-        await client.upload_part("PUT", "http://store.example.com/p", [], b"x")
+        await client.upload_part("PUT", "http://store-001.blobstore.apple.com/p", [], b"x")
 
 
 async def test_presigned_upload_failure_status_reported(tmp_path: Path) -> None:
     client = make_client(tmp_path, lambda _r: httpx.Response(403))
     with pytest.raises(AscError, match="status 403"):
-        await client.upload_part("PUT", "https://store.example.com/p", [], b"x")
+        await client.upload_part("PUT", "https://store-001.blobstore.apple.com/p", [], b"x")
 
 
 @pytest.mark.parametrize("bad", ["..", ".", "a.b", "a_b", "-x"])

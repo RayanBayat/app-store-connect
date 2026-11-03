@@ -26,6 +26,7 @@ KEY_KINDS: Final = ("team", "individual")
 TRUE_WORDS: Final = ("1", "true", "yes")
 # Any permission bit for "group" or "others" (rwx for both) is too open.
 OPEN_BITS: Final = 0o077
+GROUP_OTHER_WRITE: Final = 0o022
 # A real .p8 key is about 250 bytes; anything near this size is not a key.
 MAX_KEY_BYTES: Final = 8 * 1024
 
@@ -220,6 +221,18 @@ def _load_root(env: Mapping[str, str], problems: list[str]) -> Path | None:
     root = Path(raw).expanduser()
     if not root.is_dir():
         problems.append(f"ASC_ROOT={raw} is not an existing folder.")
+        return root
+    real = root.resolve()
+    if real in (Path(real.anchor), Path.home().resolve()):
+        problems.append(
+            f"ASC_ROOT={raw} is too broad: it is / or your home folder. Use a folder that holds "
+            "only the screenshots."
+        )
+    elif real.stat().st_mode & GROUP_OTHER_WRITE:
+        problems.append(
+            f"ASC_ROOT={raw} is writable by other users, so files in it cannot be trusted. "
+            f"Fix it with: chmod go-w {shlex.quote(str(real))}"
+        )
     return root
 
 

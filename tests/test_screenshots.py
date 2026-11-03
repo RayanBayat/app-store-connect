@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 from typing import Any
 
@@ -11,10 +12,13 @@ import mcp_types as types
 import pytest
 from mcp.client.session import ClientRequestContext
 
+from app_store_connect.tools import screenshots
+from app_store_connect.tools.base import ToolRefusedError
+
 from .apple_fake import FakeApple, connected, one, resource, text_of
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"0123456789" * 10  # 108 bytes
-PRESIGNED = "https://uploads.example.com/part"
+PRESIGNED = "https://store-001.blobstore.apple.com/part"
 
 
 async def approve(
@@ -86,7 +90,11 @@ async def test_full_flow_reserve_upload_parts_commit_with_md5(tmp_path: Path, ro
         "type": "appScreenshotSets",
         "id": "s1",
     }
-    assert (part1.host, part1.path, part2.path) == ("uploads.example.com", "/part1", "/part2")
+    assert (part1.host, part1.path, part2.path) == (
+        "store-001.blobstore.apple.com",
+        "/part1",
+        "/part2",
+    )
     assert commit.body["data"]["attributes"] == {
         "uploaded": True,
         "sourceFileChecksum": hashlib.md5(PNG, usedforsecurity=False).hexdigest(),
@@ -96,7 +104,7 @@ async def test_full_flow_reserve_upload_parts_commit_with_md5(tmp_path: Path, ro
 async def test_presigned_uploads_carry_no_authorization_header(tmp_path: Path, root: Path) -> None:
     fake = make_fake(len(PNG))
     await upload(tmp_path, fake, root, "shot.png")
-    uploads = [r for r in fake.seen if r.host == "uploads.example.com"]
+    uploads = [r for r in fake.seen if r.host == "store-001.blobstore.apple.com"]
     assert len(uploads) == 2
     assert all(r.authorization is None for r in uploads)
     assert all(r.authorization for r in fake.seen if r.host == "api.appstoreconnect.apple.com")
@@ -188,13 +196,18 @@ async def test_apple_upload_instructions_outside_the_file_are_refused(
     )
     result = await upload(tmp_path, fake, root, "shot.png")
     assert result.is_error
-    assert not [r for r in fake.seen if r.host == "uploads.example.com"]
+    assert not [r for r in fake.seen if r.host == "store-001.blobstore.apple.com"]
 
 
 async def test_non_https_upload_url_is_refused(tmp_path: Path, root: Path) -> None:
     fake = make_fake(len(PNG))
     ops = [
-        {"method": "PUT", "url": "http://uploads.example.com/p", "offset": 0, "length": len(PNG)}
+        {
+            "method": "PUT",
+            "url": "http://store-001.blobstore.apple.com/p",
+            "offset": 0,
+            "length": len(PNG),
+        }
     ]
     fake.on(
         "POST",
@@ -205,3 +218,147 @@ async def test_non_https_upload_url_is_refused(tmp_path: Path, root: Path) -> No
     result = await upload(tmp_path, fake, root, "shot.png")
     assert result.is_error
     assert "not https" in text_of(result)
+
+
+# ---------------------------------------------------------------- L2: one open descriptor
+
+
+async def test_file_swapped_for_a_symlink_while_the_form_is_open_is_not_followed(
+    tmp_path: Path, root: Path
+) -> None:
+    """Regression (PoC): the file was re-opened by path after the human said yes."""
+    secret = tmp_path / "secret.p8"
+    secret.write_bytes(b"-----BEGIN PRIVATE KEY-----SECRETSECRET" + b"x" * 69)
+    sent: list[bytes] = []
+    fake = make_fake(len(PNG))
+
+    def record(request: httpx.Request) -> httpx.Response:
+        sent.append(request.content)
+        return httpx.Response(200)
+
+    fake.on("PUT", "/part1", record)
+    fake.on("PUT", "/part2", record)
+    shot = root / "shot.png"
+
+    async def swap(
+        context: ClientRequestContext, params: types.ElicitRequestParams
+    ) -> types.ElicitResult:
+        shot.unlink()
+        shot.symlink_to(secret)  # swapped while the human reads the form
+        return types.ElicitResult(action="accept", content={"approve": True})
+
+    async with connected(tmp_path, fake, allow_writes=True, elicit=swap, root=root) as client:
+        await client.call_tool(
+            "upload_screenshot", {"screenshot_set_id": "s1", "file_path": "shot.png"}
+        )
+    assert b"".join(sent) in (b"", PNG)
+    assert b"SECRET" not in b"".join(sent)
+    commit = [r for r in fake.seen if r.method == "PATCH"]
+    if commit:
+        assert (
+            commit[0].body["data"]["attributes"]["sourceFileChecksum"]
+            == hashlib.md5(PNG, usedforsecurity=False).hexdigest()
+        )
+
+
+def test_open_refuses_fifo_without_hanging(tmp_path: Path) -> None:
+    fifo = tmp_path / "pipe.png"
+    os.mkfifo(fifo)
+    with pytest.raises(ToolRefusedError, match="regular file"):
+        screenshots.read_checked_file(fifo, fifo.stat())
+
+
+def test_open_refuses_a_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "t.png"
+    target.write_bytes(PNG)
+    link = tmp_path / "l.png"
+    link.symlink_to(target)
+    with pytest.raises(ToolRefusedError):
+        screenshots.read_checked_file(link, target.stat())
+
+
+def test_open_refuses_a_different_file_than_the_one_checked(tmp_path: Path) -> None:
+    a, b = tmp_path / "a.png", tmp_path / "b.png"
+    a.write_bytes(PNG)
+    b.write_bytes(PNG)
+    with pytest.raises(ToolRefusedError, match="changed"):
+        screenshots.read_checked_file(a, b.stat())
+
+
+def test_open_refuses_oversized_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    a = tmp_path / "a.png"
+    a.write_bytes(PNG)
+    monkeypatch.setattr(screenshots, "MAX_FILE_BYTES", 10)
+    with pytest.raises(ToolRefusedError, match="larger"):
+        screenshots.read_checked_file(a, a.stat())
+
+
+# ---------------------------------------------------------------- L3: upload instructions
+
+
+async def run_with_ops(
+    tmp_path: Path, root: Path, ops: list[dict[str, Any]]
+) -> tuple[Any, FakeApple]:
+    fake = make_fake(len(PNG))
+    fake.on(
+        "POST",
+        "/v1/appScreenshots",
+        one(resource("appScreenshots", "p1", uploadOperations=ops)),
+        201,
+    )
+    fake.on("PUT", "/internal", lambda _r: httpx.Response(200))
+    fake.on("POST", "/internal", lambda _r: httpx.Response(200))
+    return await upload(tmp_path, fake, root, "shot.png"), fake
+
+
+def part(url: str, offset: int = 0, length: int = len(PNG), method: str = "PUT") -> dict[str, Any]:
+    return {"method": method, "url": url, "offset": offset, "length": length, "requestHeaders": []}
+
+
+GOOD = "https://store-001.blobstore.apple.com/part"
+
+
+@pytest.mark.parametrize(
+    "ops",
+    [
+        [part("https://127.0.0.1:8443/internal", method="POST")],  # the reviewer's PoC
+        [part("https://127.0.0.1/internal")],
+        [part("https://[::1]/internal")],
+        [part("https://store.apple.com.evil.example/internal")],
+        [part("https://evilapple.com/internal")],
+        [part("https://store-001.blobstore.apple.com:8443/internal")],
+        [part("http://store-001.blobstore.apple.com/internal")],
+        [part(GOOD, method="POST")],
+        [part(GOOD, method="GET")],
+        [part(GOOD + "1", 0, 60), part(GOOD + "2", 50, len(PNG) - 50)],  # overlap
+        [part(GOOD + "1", 0, 60), part(GOOD + "2", 60, 1000)],  # out of range
+        [part(GOOD + "1", 0, 60)],  # total is shorter than the file
+        [part(GOOD + "1", 0, 60), part(GOOD + "2", 0, 60)],  # same range twice
+        [part(GOOD + "1", -1, len(PNG))],
+        [part(GOOD + "1", 0, 0)],
+    ],
+    ids=[
+        "poc-127-post", "ip-v4", "ip-v6", "suffix-trick", "no-dot-boundary", "port", "http",
+        "post", "get", "overlap", "out-of-range", "short-total", "duplicate", "negative", "empty",
+    ],
+)  # fmt: skip
+async def test_bad_upload_instructions_send_no_part(
+    tmp_path: Path, root: Path, ops: list[dict[str, Any]]
+) -> None:
+    result, fake = await run_with_ops(tmp_path, root, ops)
+    assert result.is_error
+    assert [r for r in fake.seen if r.host != "api.appstoreconnect.apple.com"] == []
+
+
+async def test_good_instructions_with_exact_cover_are_sent(tmp_path: Path, root: Path) -> None:
+    ops = [part(GOOD + "1", 0, 60), part(GOOD + "2", 60, len(PNG) - 60)]
+    result, _ = await run_with_ops(tmp_path, root, ops)
+    assert not result.is_error, text_of(result)
+
+
+async def test_redirect_from_the_upload_host_is_a_failure(tmp_path: Path, root: Path) -> None:
+    fake = make_fake(len(PNG))
+    fake.on("PUT", "/part1", lambda _r: httpx.Response(302, headers={"location": "https://x/"}))
+    result = await upload(tmp_path, fake, root, "shot.png")
+    assert result.is_error
+    assert "302" in text_of(result)
