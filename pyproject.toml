@@ -1,7 +1,7 @@
 [project]
 name = "app-store-connect"
 version = "0.1.0"
-description = "App Store Connect in Claude, safely: a guarded MCP proxy around the audited upstream server."
+description = "App Store Connect in Claude, safely: an MCP server for Apple's App Store Connect API."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -52,4 +52,4 @@ addopts = "-ra --strict-markers --strict-config -m 'not network'"
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-markers = ["network: downloads real upstream release assets (deselected by default)"]
+markers = ["network: downloads Apple's published OpenAPI spec (deselected by default)"]

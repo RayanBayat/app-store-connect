@@ -1,4 +1,4 @@
-"""App Store Connect in Claude, safely: a guarded MCP proxy around the audited upstream server."""
+"""App Store Connect in Claude, safely: an MCP server for Apple's App Store Connect API."""
 
 from importlib.metadata import PackageNotFoundError, version
 

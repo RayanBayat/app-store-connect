@@ -1,6 +1,6 @@
-"""The monthly review record: has a human looked at what changed upstream recently?
+"""The monthly review record: has a human looked at what changed recently?
 
-Why: the upstream server is third-party code that changes fast and holds a key that can
+Why: Apple's API and our dependencies change, and this server holds a key that can
 edit a live App Store listing. Tools stop working when the last review is too old, so
 the review cannot be forgotten.
 

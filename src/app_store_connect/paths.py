@@ -24,11 +24,6 @@ def _base(env_name: str, fallback: tuple[str, ...], env: Mapping[str, str] | Non
     return Path.home().joinpath(*fallback)
 
 
-def data_dir(env: Mapping[str, str] | None = None) -> Path:
-    """Folder for downloaded upstream binaries (under XDG_DATA_HOME, else ~/.local/share)."""
-    return _base("XDG_DATA_HOME", (".local", "share"), env) / APP_NAME
-
-
 def state_dir(env: Mapping[str, str] | None = None) -> Path:
     """Folder for review records and run files (under XDG_STATE_HOME, else ~/.local/state)."""
     return _base("XDG_STATE_HOME", (".local", "state"), env) / APP_NAME

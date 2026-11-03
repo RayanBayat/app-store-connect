@@ -1,114 +1,147 @@
-# asc-mcp-maintenance
+# app-store-connect
 
-A Claude Code plugin that keeps the [App Store Connect MCP server](https://github.com/idoo/app-store-connect-mcp) current and safe.
+App Store Connect in Claude, safely. This is an [MCP](https://modelcontextprotocol.io) server that
+talks directly to Apple's official [App Store Connect API](https://developer.apple.com/documentation/appstoreconnectapi).
 
-That server gives Claude an App Store Connect API key, which can change your store listing, your testers and your releases. It is third-party code and it changes fast. This plugin makes sure you **look at what changed at least once a month** before you keep using it.
+- **Read-only by default.** Writes are opt-in, and even then Claude must ask you in a
+  confirmation form before anything is sent.
+- **Small and auditable.** Plain Python, no other server in between, no web/Apple ID login,
+  no "send any request" tool.
+- **Monthly review built in.** Tools stop working once a month has passed without a review, so
+  the code never silently goes stale (see [The monthly review](#the-monthly-review)).
 
-## What it does
+## What you need
 
-- **Blocks the server's tools when a review is due.** Every `mcp__asc__*` tool call is stopped once your last review is 30 days old, or if you have never done one. Claude sees why and what to do next.
-- **Guides the review.** The included skill walks Claude (and you) through new releases, dependency changes, known vulnerabilities, security-relevant code changes, new or deprecated tools, and changes on Apple's side. It ends with a short report and a question: upgrade or stay?
-- **Upgrades only verified releases.** Installs check the release checksum and GitHub's build provenance, and abort on any mismatch.
-- **Remembers each review.** The date, version, outcome and tool list are saved, so the next review can show exactly which tools were added or removed.
+- [`uv`](https://docs.astral.sh/uv/getting-started/installation/) and `git`
+- An App Store Connect account that can create API keys
 
-## Requirements
+## 1. Create an App Store Connect API key
 
-- [Claude Code](https://claude.com/claude-code).
-- The App Store Connect MCP server, registered in Claude Code under the name **`asc`**.
-- `python3` 3.12 or newer. Nothing else to install for the monthly check: it uses only the standard library.
-- [`gh`](https://cli.github.com/), logged in (`gh auth login`). The review uses it to read releases and verify downloads.
-- [`uv`](https://docs.astral.sh/uv/), only for `scripts/probe.py`, which lists the server's tools.
+1. Sign in to App Store Connect, then **Users and Access → Integrations → App Store Connect API**.
+2. Open **Team Keys** and click **+**.
+3. Name it (for example "Claude") and pick the **App Manager** role. It is the smallest role that
+   can do everything this server offers.
+4. Click **Generate**, then **Download** the `.p8` file. Apple lets you download it **only once**.
+5. Note the **Key ID** (next to the key) and the **Issuer ID** (top of the page).
+6. Put the key in a private folder:
 
-Linux and macOS are supported.
+   ```
+   mkdir -p ~/.config/app-store-connect && chmod 700 ~/.config/app-store-connect
+   mv ~/Downloads/AuthKey_XXXXXXXXXX.p8 ~/.config/app-store-connect/ && chmod 600 ~/.config/app-store-connect/AuthKey_XXXXXXXXXX.p8
+   ```
 
-## Install
+The server refuses to start if the key file or its folder can be read by other users.
+
+## 2. Install
+
+One command (replace the three values):
 
 ```
-claude plugin marketplace add RayanBayat/asc-mcp-maintenance
-claude plugin install asc-mcp-maintenance@asc-mcp-maintenance
+claude mcp add app-store-connect --scope user -e ASC_KEY_ID=<key id> -e ASC_ISSUER_ID=<issuer id> -e ASC_PRIVATE_KEY_PATH=<path to AuthKey_XXXXXXXXXX.p8> -- uvx --refresh --quiet --from git+https://github.com/RayanBayat/app-store-connect@main app-store-connect
 ```
 
-Restart Claude Code. Your first `mcp__asc__*` call is blocked until you have done one review. That's on purpose: the first review records what you are running.
+To let Claude make changes, add `-e ASC_ALLOW_WRITES=1`. Claude then shows you a form that says
+exactly what will change, and nothing happens unless you accept it. Public actions (submitting for
+review, replying to a review) are labelled **PUBLIC AND IRREVERSIBLE** in that form.
 
-To update the plugin later: `claude plugin marketplace update asc-mcp-maintenance`.
+To let Claude upload screenshots, add `-e ASC_ROOT=<folder with your screenshots>`. Claude can
+only read files inside that folder.
 
-## How it works
+### All settings
 
-```
-you use the App Store Connect server
-        │
-        ▼
-reviewed in the last 30 days? ── yes ──▶ works as normal
-        │ no
-        ▼
-Claude asks for the monthly review first
-        │
-        ▼
-the review: releases → dependencies + vulnerabilities → security-relevant changes
-            → new/removed tools → Apple changes → report → your decision
-        │
-        ▼
-review recorded ──▶ good for another 30 days
-```
-
-The gate **fails closed**: if the check can't run or crashes, the call is blocked rather than allowed.
-
-## Doing a review
-
-Ask Claude something like "review the App Store Connect MCP", or simply use it. When a review is due, Claude is told to run it. You'll get a report table and a recommendation, and nothing gets installed until you say yes.
-
-Useful commands, run from the plugin folder:
-
-| Command | What it does |
-|---|---|
-| `python3 scripts/asc_maint.py status` | Last review, days left, installed and latest version |
-| `python3 scripts/osv_check.py go.mod` | Checks a go.mod against the OSV vulnerability database |
-| `uv run scripts/probe.py` | Starts the server and lists its tools (`[write]` marks write tools) |
-| `bash scripts/install_release.sh 0.23.0` | Verifies and installs that release |
-| `bash scripts/install_release.sh 0.23.0 --extract-only /tmp/x` | Verifies and unpacks it without installing |
-| `python3 scripts/asc_maint.py stamp --server-version 0.23.0 --outcome "..."` | Records a finished review |
-
-## Settings
-
-| Environment variable | Default | Meaning |
+| Variable | Required | Meaning |
 |---|---|---|
-| `ASC_MCP_REVIEW_MAX_DAYS` | `30` | Days a review stays valid (1–365) |
-| `ASC_MCP_MAINT_STATE_DIR` | `~/.local/state/asc-mcp-maintenance` | Where the review record is kept |
-| `ASC_MCP_BIN` | `app-store-connect-mcp` on your PATH | The server binary that `status` checks |
-| `ASC_MCP_INSTALL_DIR` | `~/.local/bin` | Where `install_release.sh` installs |
+| `ASC_KEY_ID` | yes | Key ID of your API key |
+| `ASC_ISSUER_ID` | yes | Issuer ID (team keys) |
+| `ASC_PRIVATE_KEY_PATH` | yes | Path to the `.p8` file. The key contents are never accepted as a variable (`ASC_PRIVATE_KEY` is refused). |
+| `ASC_KEY_KIND` | no | `team` (default) or `individual` |
+| `ASC_VENDOR_NUMBER` | no | Your vendor number |
+| `ASC_ALLOW_WRITES` | no | `1`, `true` or `yes` turns on the write tools. Default: off |
+| `ASC_ROOT` | no | The only folder file tools may read |
+| `ASC_REVIEW_MAX_DAYS` | no | Days between reviews, 1 to 365. Default: 30 |
 
-## Recommended safety settings for the server
+## What Claude can do
 
-A security audit of v0.22.0 found that the model can switch on extra toolsets, including an Apple ID web login, without asking you. Add these to `permissions.deny` in `~/.claude/settings.json` (merge them with what's already there):
+**Always available (read-only):** `list_apps`, `get_app`, `list_app_store_versions`,
+`get_version_status`, `list_builds`, `get_build`, `list_beta_groups`, `list_beta_testers`,
+`get_version_localizations`, `get_app_info_localizations`, `list_screenshot_sets`,
+`list_customer_reviews`, `get_review_submissions`.
 
-```json
-"mcp__asc__toolsets",
-"mcp__asc__web_login",
-"mcp__asc__asc_api_request"
+**Only with `ASC_ALLOW_WRITES=1` (each one asks you first):** `update_version_localization`,
+`update_app_info_localization`, `create_app_store_version`, `select_build_for_version`,
+`add_beta_tester`, `remove_beta_tester`, `add_build_to_beta_group`, `submit_build_for_beta_review`,
+`submit_for_app_review`, `reply_to_customer_review`, `upload_screenshot`.
+
+**Maintenance:** `maintenance_status`, `maintenance_report`, `maintenance_confirm_review`.
+
+Customer reviews are written by strangers, so their text is marked as untrusted content and
+Claude is told never to follow instructions found in it.
+
+## What is deliberately not here
+
+- No tool that sends a raw request to any endpoint.
+- No Apple ID or web login of any kind.
+- No way for Claude to confirm its own changes (there is no "confirm" argument).
+- Your key, tokens and issuer ID are never returned in a result or written to a log.
+
+The full explanation is in [docs/security.md](docs/security.md).
+
+## The monthly review
+
+Apple changes its API, and libraries get security fixes. So tools stop working once the last
+review is older than 30 days (or if there never was one) and Claude is told what to do:
+
+1. Claude runs `maintenance_report` and shows you the report: is the Apple API spec newer, are
+   any endpoints we use missing or deprecated, are our dependencies outdated or vulnerable, did
+   the tool list change.
+2. You read it. Then Claude calls `maintenance_confirm_review`, and a form appears **in your
+   client**. Only if you accept it (and tick "I have read the maintenance report") is the review
+   recorded. Claude cannot do that for you.
+
+If your client cannot show forms, run the review in a terminal instead (see below).
+
+## Updating
+
+Automatic. The install command uses `uvx --refresh`, so every start fetches the latest version
+from GitHub.
+
+## Terminal commands
+
+```
+uvx --from git+https://github.com/RayanBayat/app-store-connect@main app-store-connect status
+uvx --from git+https://github.com/RayanBayat/app-store-connect@main app-store-connect review
+uvx --from git+https://github.com/RayanBayat/app-store-connect@main app-store-connect doctor
 ```
 
-Keep your `.p8` key in a folder only you can read (`chmod 700` folder, `chmod 600` file), and add `Read(...)` deny rules for that folder too. The full findings and what to re-check on every update are in [`references/audit-checklist.md`](references/audit-checklist.md).
+`doctor` reads the same `ASC_*` variables, so run it like this:
+
+```
+ASC_KEY_ID=<key id> ASC_ISSUER_ID=<issuer id> ASC_PRIVATE_KEY_PATH=<path> uvx --from git+https://github.com/RayanBayat/app-store-connect@main app-store-connect doctor --online
+```
+
+`--online` makes one read-only call to Apple to prove the credentials work.
 
 ## Uninstall
 
 ```
-claude plugin uninstall asc-mcp-maintenance@asc-mcp-maintenance
+claude mcp remove app-store-connect --scope user
+rm -rf ~/.local/state/app-store-connect
 ```
-
-Your review history stays in `~/.local/state/asc-mcp-maintenance/`. Delete that folder to remove it.
 
 ## Development
 
 ```
-uv sync                      # installs the dev tools from uv.lock
-uv run pytest -q             # tests
-uv run ruff check            # lint
-uv run ruff format --check   # formatting
-claude plugin validate .     # plugin manifest check
+uv sync
+uv run pytest -m "not network"   # fast tests, no internet
+uv run pytest -m network         # downloads Apple's published OpenAPI spec
+uv run ruff check && uv run ruff format --check
+uv run mypy
 ```
 
-CI runs the same checks on every push. Dependabot keeps the GitHub Actions and Python dev tools up to date.
+See [MAINTENANCE.md](MAINTENANCE.md) for the monthly routine and [AGENTS.md](AGENTS.md) for the
+rules for AI agents working on this repository.
 
-## License
+## Credits and legal
 
-MIT. Not affiliated with Apple or with the author of app-store-connect-mcp.
+MIT licensed, see [LICENSE](LICENSE). Not affiliated with or endorsed by Apple. "App Store
+Connect" is a trademark of Apple Inc.
