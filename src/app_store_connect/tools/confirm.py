@@ -8,15 +8,11 @@ cancel, a client without form support) means nothing is sent to Apple.
 
 from __future__ import annotations
 
-import logging
 from typing import Any, Final
 
-from mcp.shared.exceptions import MCPError
-
+from app_store_connect.confirmflow import ConfirmationRefusedError, ask_human
 from app_store_connect.textsafe import escape_display
 from app_store_connect.tools.base import ToolContext, ToolRefusedError
-
-logger = logging.getLogger(__name__)
 
 APPROVE_SCHEMA: Final[dict[str, Any]] = {
     "type": "object",
@@ -53,23 +49,29 @@ def build_message(title: str, lines: list[str], *, public: bool) -> str:
 async def confirm_change(
     ctx: ToolContext, title: str, lines: list[str], *, public: bool = False
 ) -> None:
-    """Ask the human to approve a change; raise `ToolRefusedError` unless they explicitly accept."""
+    """Ask the human to approve a change; raise `ToolRefusedError` unless they explicitly accept.
+
+    On protocol 2026-07-28 the first call raises `InputRequiredSignal` (the server returns the
+    form to the client) and the retried call, which rebuilds this same form from current data,
+    comes back here with the answer. See `confirmflow` for how that is made safe.
+    """
     if ctx.session is None:
         raise ToolRefusedError(
             "No client session is available to ask for confirmation. Nothing was changed."
         )
     try:
-        result = await ctx.session.elicit_form(
-            build_message(title, lines, public=public), APPROVE_SCHEMA
+        await ask_human(
+            ctx.session,
+            ctx.confirmations,
+            tool_name=ctx.tool_name,
+            arguments=ctx.arguments,
+            message=build_message(title, lines, public=public),
+            schema=APPROVE_SCHEMA,
+            approve_field="approve",
+            input_responses=ctx.input_responses,
+            request_state=ctx.request_state,
         )
-    except MCPError as exc:
-        logger.info("confirmation form could not be shown: %s", exc)
+    except ConfirmationRefusedError as exc:
         raise ToolRefusedError(
-            "This client cannot show confirmation forms (MCP elicitation), and every change "
-            "needs your explicit confirmation. Nothing was changed."
+            f"The change was not confirmed: {exc}. Nothing was changed."
         ) from exc
-    approved = result.action == "accept" and (result.content or {}).get("approve") is True
-    if not approved:
-        raise ToolRefusedError(
-            f"The change was not confirmed ({result.action}). Nothing was changed."
-        )

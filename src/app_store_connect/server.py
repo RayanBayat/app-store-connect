@@ -22,12 +22,14 @@ from typing import Any
 import mcp_types as types
 from mcp.server import Server
 from mcp.server.context import ServerRequestContext
+from mcp.server.request_state import RequestStateBoundary, RequestStateSecurity
 from mcp.server.stdio import stdio_server
 
 from app_store_connect import __version__
 from app_store_connect.auth import AuthError, TokenProvider
 from app_store_connect.client import AscClient, AscError
 from app_store_connect.config import Config, ConfigError, load_config
+from app_store_connect.confirmflow import STATE_TTL_SECONDS, ConfirmationBook, InputRequiredSignal
 from app_store_connect.maintenance import NAMES, TOOLS, Maintenance, text_result
 from app_store_connect.paths import tildify
 from app_store_connect.review import check_review, load_review, now_local
@@ -66,6 +68,8 @@ class AppServer:
         self._client = client
         self._clock = clock
         self._maintenance = maintenance
+        self._confirmations = ConfirmationBook()
+        self._request_state = RequestStateSecurity.ephemeral(ttl=STATE_TTL_SECONDS)
         allow = bool(config and config.allow_writes)
         self._tools: dict[str, ToolSpec] = {t.name: t for t in all_tools(allow_writes=allow)}
         self._write_names = {t.name for t in write_tools()}
@@ -81,20 +85,20 @@ class AppServer:
 
     async def call_tool(
         self, ctx: ServerRequestContext[Any], params: types.CallToolRequestParams
-    ) -> types.CallToolResult:
+    ) -> types.CallToolResult | types.InputRequiredResult:
         """Apply the rules in order; see the module docstring."""
         name, arguments = params.name, params.arguments or {}
         if self.startup_error is not None:
             return error_result(self.startup_error)
         if name in NAMES:
-            return await self._maintenance_call(name, arguments, ctx)
+            return await self._maintenance_call(name, arguments, ctx, params)
         tool = self._tools.get(name)
         if tool is None:
             return error_result(self._unknown_message(name))
         gate = self._review_gate()
         if gate is not None:
             return error_result(gate)
-        return await self._run(tool, arguments, ctx)
+        return await self._run(tool, arguments, ctx, params)
 
     def _unknown_message(self, name: str) -> str:
         if name in self._write_names:
@@ -112,21 +116,47 @@ class AppServer:
         return check.message if check.overdue else None
 
     async def _maintenance_call(
-        self, name: str, arguments: dict[str, Any], ctx: ServerRequestContext[Any]
-    ) -> types.CallToolResult:
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        ctx: ServerRequestContext[Any],
+        params: types.CallToolRequestParams,
+    ) -> types.CallToolResult | types.InputRequiredResult:
         if self._maintenance is None:
             return error_result("The server is not configured.")
-        return await self._maintenance.call(name, arguments, ctx.session, snapshot_tool_names())
+        return await self._maintenance.call(
+            name,
+            arguments,
+            ctx.session,
+            snapshot_tool_names(),
+            input_responses=params.input_responses,
+            request_state=params.request_state,
+        )
 
     async def _run(
-        self, tool: ToolSpec, arguments: dict[str, Any], ctx: ServerRequestContext[Any]
-    ) -> types.CallToolResult:
+        self,
+        tool: ToolSpec,
+        arguments: dict[str, Any],
+        ctx: ServerRequestContext[Any],
+        params: types.CallToolRequestParams,
+    ) -> types.CallToolResult | types.InputRequiredResult:
         """Run one tool, turning every expected failure into a readable error result."""
         if self._client is None or self.config is None:
             return error_result("The server is not configured.")
-        context = ToolContext(self._client, self.config, ctx.session)
+        context = ToolContext(
+            self._client,
+            self.config,
+            ctx.session,
+            tool_name=tool.name,
+            arguments=arguments,
+            input_responses=params.input_responses,
+            request_state=params.request_state,
+            confirmations=self._confirmations,
+        )
         try:
             return text_result(await tool.handler(context, arguments))
+        except InputRequiredSignal as signal:  # the human is asked; the client calls again
+            return signal.result
         except (ToolInputError, ToolRefusedError, AscError, AuthError) as exc:
             return error_result(str(exc))
         except Exception as exc:  # last resort: report the type only, never raw details
@@ -144,13 +174,19 @@ class AppServer:
 
     def build_server(self) -> Server[Any]:
         """Create the low-level MCP server wired to this object."""
-        return Server(
+        server: Server[Any] = Server(
             SERVER_NAME,
             version=__version__,
             lifespan=self.lifespan,
             on_list_tools=self.list_tools,
             on_call_tool=self.call_tool,
         )
+        # Seals the request_state of 2026-07-28 confirmations (AES-GCM, random per-process key,
+        # bound to the tool name and exact arguments, expires after 10 minutes).
+        server.middleware.append(
+            RequestStateBoundary(self._request_state, default_audience=SERVER_NAME)
+        )
+        return server
 
 
 def create_app(env: Mapping[str, str]) -> AppServer:

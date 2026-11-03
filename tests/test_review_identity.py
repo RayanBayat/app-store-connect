@@ -116,12 +116,23 @@ def maintenance_with_clock(tmp_path: Path, now: list[datetime]) -> Maintenance:
     )
 
 
+async def confirm(m: Maintenance, session: FakeSession) -> types.CallToolResult:
+    result = await m.call(
+        "maintenance_confirm_review", {"summary": "ok"}, as_session(session), ["t"]
+    )
+    assert isinstance(result, types.CallToolResult)
+    return result
+
+
 def as_session(fake: FakeSession) -> ServerSession:
     """The tests only need elicit_form, so a small fake stands in for the MCP session."""
     return cast(ServerSession, fake)
 
 
 class FakeSession:
+    client_capabilities = None
+    protocol_version = "2025-11-25"
+
     def __init__(self) -> None:
         self.messages: list[str] = []
 
@@ -136,15 +147,11 @@ async def test_report_older_than_30_minutes_is_not_enough(tmp_path: Path) -> Non
     session = FakeSession()
     await m.call("maintenance_report", {}, as_session(session), ["t"])
     now[0] = NOW + timedelta(minutes=31)
-    result = await m.call(
-        "maintenance_confirm_review", {"summary": "ok"}, as_session(session), ["t"]
-    )
+    result = await confirm(m, session)
     assert result.is_error
     assert session.messages == []
     now[0] = NOW + timedelta(minutes=29)
-    result = await m.call(
-        "maintenance_confirm_review", {"summary": "ok"}, as_session(session), ["t"]
-    )
+    result = await confirm(m, session)
     assert not result.is_error
 
 
@@ -153,9 +160,7 @@ async def test_a_report_from_another_session_does_not_count(tmp_path: Path) -> N
     first, second = maintenance_with_clock(tmp_path, now), maintenance_with_clock(tmp_path, now)
     session = FakeSession()
     await first.call("maintenance_report", {}, as_session(session), ["t"])
-    result = await second.call(
-        "maintenance_confirm_review", {"summary": "ok"}, as_session(session), ["t"]
-    )
+    result = await confirm(second, session)
     assert result.is_error
 
 

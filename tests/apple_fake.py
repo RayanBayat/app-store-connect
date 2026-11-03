@@ -111,6 +111,7 @@ async def connected(
     elicit: ElicitationFnT | None = None,
     fresh_review: bool = True,
     root: Path | None = None,
+    mode: Any = "legacy",
 ) -> AsyncIterator[Client]:
     """Run the real server in-process against the fake Apple API and connect a test client."""
     config = make_config(tmp_path / "keys", allow_writes=allow_writes, root=root)
@@ -120,7 +121,7 @@ async def connected(
     maintenance = Maintenance(config, clock=lambda: NOW, report_fn=fake_report)
     app = AppServer(config, client, maintenance=maintenance, clock=lambda: NOW)
     async with Client(
-        app.build_server(), mode="legacy", cache=None, elicitation_callback=elicit
+        app.build_server(), mode=mode, cache=None, elicitation_callback=elicit
     ) as connection:
         yield connection
 

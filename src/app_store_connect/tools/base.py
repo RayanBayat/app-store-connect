@@ -10,8 +10,8 @@ happen (for example the human declined). Both become a normal error result for t
 from __future__ import annotations
 
 import json
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass, field
 from typing import Any, Final
 
 import mcp_types as types
@@ -19,6 +19,7 @@ from mcp.server.session import ServerSession
 
 from app_store_connect.client import AscClient
 from app_store_connect.config import Config
+from app_store_connect.confirmflow import ConfirmationBook
 from app_store_connect.textsafe import wrap_strings
 
 DEFAULT_LIMIT: Final = 50
@@ -40,6 +41,13 @@ class ToolContext:
     client: AscClient
     config: Config
     session: ServerSession | None = None
+    # What the confirmation step needs (see confirmflow): the call being served, and, on a retry
+    # under protocol 2026-07-28, the answer and state the client sent back.
+    tool_name: str = ""
+    arguments: Mapping[str, Any] = field(default_factory=dict)
+    input_responses: Mapping[str, Any] | None = None
+    request_state: str | None = None
+    confirmations: ConfirmationBook = field(default_factory=ConfirmationBook)
 
 
 Handler = Callable[[ToolContext, dict[str, Any]], Awaitable[str]]

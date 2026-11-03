@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Final
@@ -20,10 +20,15 @@ from typing import Any, Final
 import httpx
 import mcp_types as types
 from mcp.server.session import ServerSession
-from mcp.shared.exceptions import MCPError
 
 from app_store_connect import __version__
 from app_store_connect.config import Config
+from app_store_connect.confirmflow import (
+    ConfirmationBook,
+    ConfirmationRefusedError,
+    InputRequiredSignal,
+    ask_human,
+)
 from app_store_connect.identity import compare_with_review, current_identity
 from app_store_connect.report import (
     ReportFacts,
@@ -178,6 +183,7 @@ class Maintenance:
     clock: Callable[[], datetime] = now_local
     report_fn: ResultFn = field(default=make_report_result)
     _last_report: tuple[datetime, ReportFacts] | None = field(default=None, init=False)
+    _book: ConfirmationBook = field(default_factory=ConfirmationBook, init=False)
 
     async def call(
         self,
@@ -185,7 +191,10 @@ class Maintenance:
         arguments: dict[str, Any],
         session: ServerSession,
         tool_names: list[str],
-    ) -> types.CallToolResult:
+        *,
+        input_responses: Mapping[str, Any] | None = None,
+        request_state: str | None = None,
+    ) -> types.CallToolResult | types.InputRequiredResult:
         """Run one maintenance tool by name."""
         if name == STATUS:
             return text_result(self.status())
@@ -193,7 +202,17 @@ class Maintenance:
             result = await asyncio.to_thread(self.report_fn, tool_names)
             self._last_report = (self.clock(), result.facts)  # this session built a report
             return text_result(result.text)
-        return await self.confirm(str(arguments.get("summary", "")), session, tool_names)
+        try:
+            return await self.confirm(
+                str(arguments.get("summary", "")),
+                session,
+                tool_names,
+                arguments=arguments,
+                input_responses=input_responses,
+                request_state=request_state,
+            )
+        except InputRequiredSignal as signal:  # the human is asked; the client calls again
+            return signal.result
 
     def status(self) -> str:
         """Text for maintenance_status."""
@@ -205,7 +224,14 @@ class Maintenance:
         )
 
     async def confirm(
-        self, summary: str, session: ServerSession, tool_names: list[str]
+        self,
+        summary: str,
+        session: ServerSession,
+        tool_names: list[str],
+        *,
+        arguments: Mapping[str, Any] | None = None,
+        input_responses: Mapping[str, Any] | None = None,
+        request_state: str | None = None,
     ) -> types.CallToolResult:
         """Ask the human to confirm; stamp the review only on an explicit accept of `read`."""
         summary = summary.strip()
@@ -221,10 +247,18 @@ class Maintenance:
                 "Run maintenance_report, show it to the user, then call this tool again.",
                 is_error=True,
             )
-        if not await self._human_accepts(summary, session, *recent):
+        try:
+            await self._ask(
+                summary,
+                session,
+                *recent,
+                arguments=arguments or {"summary": summary},
+                input_responses=input_responses,
+                request_state=request_state,
+            )
+        except ConfirmationRefusedError as exc:
             return text_result(
-                "The review was NOT recorded: the confirmation was declined or this client "
-                "cannot show confirmation forms. Ask the user to run this in a terminal "
+                f"The review was NOT recorded: {exc}. Ask the user to run this in a terminal "
                 f"instead: {TERMINAL_COMMAND}",
                 is_error=True,
             )
@@ -239,17 +273,29 @@ class Maintenance:
         age = self.clock() - built_at
         return (built_at, facts) if timedelta(0) <= age <= REPORT_MAX_AGE else None
 
-    async def _human_accepts(
-        self, summary: str, session: ServerSession, built_at: datetime, facts: ReportFacts
-    ) -> bool:
-        """Show the form and return True only for an explicit accept with read=true."""
-        message = review_form(summary, built_at, facts, load_review())
-        try:
-            result = await session.elicit_form(message, CONFIRM_SCHEMA)
-        except MCPError as exc:
-            logger.info("could not ask for confirmation: %s", exc)
-            return False
-        return result.action == "accept" and (result.content or {}).get("read") is True
+    async def _ask(
+        self,
+        summary: str,
+        session: ServerSession,
+        built_at: datetime,
+        facts: ReportFacts,
+        *,
+        arguments: Mapping[str, Any],
+        input_responses: Mapping[str, Any] | None,
+        request_state: str | None,
+    ) -> None:
+        """Show the form (either protocol era); return only after an explicit read=true accept."""
+        await ask_human(
+            session,
+            self._book,
+            tool_name=CONFIRM,
+            arguments=arguments,
+            message=review_form(summary, built_at, facts, load_review()),
+            schema=CONFIRM_SCHEMA,
+            approve_field="read",
+            input_responses=input_responses,
+            request_state=request_state,
+        )
 
 
 def _count(value: int | None) -> str:
