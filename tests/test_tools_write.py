@@ -55,6 +55,11 @@ def build_fake() -> FakeApple:
     )
     fake.on(
         "GET",
+        "/v1/apps/1/appStoreVersions",
+        {"data": [resource("appStoreVersions", "v1", versionString="1.0")]},
+    )
+    fake.on(
+        "GET",
         "/v1/appStoreVersions/v1",
         one(
             resource(
@@ -240,6 +245,21 @@ async def test_partial_submission_failure_is_explained(tmp_path: Path) -> None:
         )
     assert result.is_error
     assert "rs1 was created but NOT submitted" in text_of(result)
+
+
+async def test_submit_refuses_a_version_that_belongs_to_another_app(tmp_path: Path) -> None:
+    """The form named app 1 while submitting a version of some other app."""
+    fake, answer = build_fake(), accept()
+    fake.on("GET", "/v1/apps/2", one(resource("apps", "2", name="Other App")))
+    fake.on("GET", "/v1/apps/2/appStoreVersions", {"data": []})
+    async with connected(tmp_path, fake, allow_writes=True, elicit=answer) as client:
+        result = await client.call_tool(
+            "submit_for_app_review", {"app_id": "2", "version_id": "v1"}
+        )
+    assert result.is_error
+    assert "does not belong" in text_of(result)
+    assert answer.messages == []
+    assert fake.writes() == []
 
 
 async def test_writes_are_not_registered_when_off(tmp_path: Path) -> None:

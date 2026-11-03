@@ -8,8 +8,10 @@ from app_store_connect.client import AscError
 from app_store_connect.textsafe import untrusted
 from app_store_connect.tools.base import (
     LIMIT_PROP,
+    MAX_LIMIT,
     ToolContext,
     ToolInputError,
+    ToolRefusedError,
     ToolSpec,
     limit_arg,
     optional_str,
@@ -97,6 +99,7 @@ async def submit_for_app_review(ctx: ToolContext, args: dict[str, Any]) -> str:
     app_id, version_id = require_str(args, "app_id"), require_str(args, "version_id")
     platform = choice(args, "platform", PLATFORMS, "IOS") or "IOS"
     app = (await ctx.client.request("GET", "/v1/apps/{id}", item_id=app_id))["data"]
+    await require_version_of_app(ctx, app_id, version_id)
     version = (await ctx.client.request("GET", "/v1/appStoreVersions/{id}", item_id=version_id))[
         "data"
     ]
@@ -112,6 +115,15 @@ async def submit_for_app_review(ctx: ToolContext, args: dict[str, Any]) -> str:
     ]
     await confirm_change(ctx, "Submit for App Review", lines, public=True)
     return await run_submission(ctx, app_id, version_id, platform)
+
+
+async def require_version_of_app(ctx: ToolContext, app_id: str, version_id: str) -> None:
+    """Refuse unless `version_id` is one of the app's own versions (so the form is truthful)."""
+    versions = await ctx.client.paginate(
+        "/v1/apps/{id}/appStoreVersions", item_id=app_id, max_items=MAX_LIMIT
+    )
+    if version_id not in {str(item.get("id")) for item in versions}:
+        raise ToolRefusedError(f"Version {version_id} does not belong to app {app_id}.")
 
 
 async def run_submission(ctx: ToolContext, app_id: str, version_id: str, platform: str) -> str:
