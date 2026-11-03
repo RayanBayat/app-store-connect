@@ -10,11 +10,12 @@ last 4 characters of the key ID.
 
 from __future__ import annotations
 
+import os
 import re
 import shlex
 import stat
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
@@ -25,6 +26,12 @@ KEY_KINDS: Final = ("team", "individual")
 TRUE_WORDS: Final = ("1", "true", "yes")
 # Any permission bit for "group" or "others" (rwx for both) is too open.
 OPEN_BITS: Final = 0o077
+# A real .p8 key is about 250 bytes; anything near this size is not a key.
+MAX_KEY_BYTES: Final = 8 * 1024
+
+
+class KeyFileError(Exception):
+    """The key file is unsafe to read. The text never contains key material."""
 
 
 class ConfigError(Exception):
@@ -35,9 +42,11 @@ class ConfigError(Exception):
 class Config:
     """Validated settings. Built once at start-up, never changed afterwards."""
 
-    key_id: str
-    issuer_id: str
-    private_key_path: Path
+    # repr=False: these must never show up if a Config (or anything holding one) is printed.
+    # The key path is hidden too, because Apple's file name contains the key ID.
+    key_id: str = field(repr=False)
+    issuer_id: str = field(repr=False)
+    private_key_path: Path = field(repr=False)
     key_kind: str = "team"
     vendor_number: str | None = None
     allow_writes: bool = False
@@ -103,6 +112,43 @@ def is_truthy(raw: str | None) -> bool:
     return (raw or "").strip().lower() in TRUE_WORDS
 
 
+def key_file_problem(info: os.stat_result, path: Path) -> str | None:
+    """Return what is wrong with an already-opened key file's metadata, or None if it is fine.
+
+    Used on the open file descriptor (fstat), so the answer is about the very file we read.
+    """
+    if not stat.S_ISREG(info.st_mode):
+        return f"The key file {masked_path(path)} is not a regular file."
+    if info.st_uid != os.getuid():
+        return f"The key file {masked_path(path)} is not owned by you, so it cannot be trusted."
+    if stat.S_IMODE(info.st_mode) & OPEN_BITS:
+        return (
+            f"The key file {masked_path(path)} can be read or changed by other users. "
+            f"Fix it with: chmod 600 {chmod_target(path)}"
+        )
+    if info.st_size >= MAX_KEY_BYTES:
+        return f"The key file {masked_path(path)} is larger than 8 KiB, so it is not a .p8 key."
+    return None
+
+
+def read_key_file(path: Path) -> bytes:
+    """Open the key once, check the open file, and read it from that same descriptor.
+
+    O_NONBLOCK keeps a FIFO swapped in for the key from hanging the server; the fstat then
+    refuses it because it is not a regular file. Nothing is checked on the path and read
+    later, so the file cannot be swapped between the check and the read.
+    """
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+    except OSError as exc:
+        raise KeyFileError(f"The key file {masked_path(path)} could not be opened.") from exc
+    with os.fdopen(fd, "rb") as handle:
+        problem = key_file_problem(os.fstat(handle.fileno()), path)
+        if problem is not None:
+            raise KeyFileError(problem)
+        return handle.read(MAX_KEY_BYTES)
+
+
 def check_key_file(path: Path) -> list[str]:
     """Return problems with the key file and its folder (empty list means fine)."""
     if not path.is_file():
@@ -111,11 +157,8 @@ def check_key_file(path: Path) -> list[str]:
             "Check ASC_PRIVATE_KEY_PATH points to your AuthKey_XXXXXXXXXX.p8 file."
         ]
     problems: list[str] = []
-    if stat.S_IMODE(path.stat().st_mode) & OPEN_BITS:
-        problems.append(
-            f"The key file {masked_path(path)} can be read or changed by other users. "
-            f"Fix it with: chmod 600 {chmod_target(path)}"
-        )
+    if problem := key_file_problem(path.stat(), path):
+        problems.append(problem)
     folder = path.resolve().parent
     if stat.S_IMODE(folder.stat().st_mode) & OPEN_BITS:
         problems.append(

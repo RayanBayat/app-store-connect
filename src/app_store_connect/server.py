@@ -29,6 +29,7 @@ from app_store_connect.auth import AuthError, TokenProvider
 from app_store_connect.client import AscClient, AscError
 from app_store_connect.config import Config, ConfigError, load_config
 from app_store_connect.maintenance import NAMES, TOOLS, Maintenance, text_result
+from app_store_connect.paths import tildify
 from app_store_connect.review import check_review, load_review, now_local
 from app_store_connect.tools import all_tools, write_tools
 from app_store_connect.tools.base import ToolContext, ToolInputError, ToolRefusedError, ToolSpec
@@ -158,7 +159,7 @@ def create_app(env: Mapping[str, str]) -> AppServer:
         config = load_config(env)
     except ConfigError as exc:
         print(str(exc), file=sys.stderr)
-        return AppServer(None, startup_error=str(exc))
+        return AppServer(None, startup_error=tildify(str(exc)))
     client = AscClient(TokenProvider(config))
     return AppServer(config, client, maintenance=Maintenance(config))
 

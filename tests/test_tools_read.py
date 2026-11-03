@@ -6,8 +6,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app_store_connect.tools.base import ToolContext
+
 from .apple_fake import FakeApple, connected, listing, one, resource, text_of
-from .helpers import unwrap
+from .helpers import ISSUER_ID, KEY_ID, make_config, unwrap
 
 APPS = listing(
     resource("apps", "1", name="Fake", bundleId="com.fake", sku="S", primaryLocale="en-US")
@@ -217,3 +219,9 @@ async def test_results_never_contain_token_or_issuer(tmp_path: Path) -> None:
     out = await call(tmp_path, fake, "list_apps", {})
     assert ISSUER_ID not in out
     assert "eyJ" not in out
+
+
+def test_tool_context_repr_does_not_leak_ids(tmp_path: Path) -> None:
+    ctx = ToolContext(client=None, config=make_config(tmp_path / "k"))  # type: ignore[arg-type]
+    assert KEY_ID not in repr(ctx)
+    assert ISSUER_ID not in repr(ctx)

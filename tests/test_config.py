@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -202,3 +203,19 @@ def test_open_key_file_message_hides_key_id(env: dict[str, str], tmp_path: Path)
         load_config(env)
     assert KEY_ID not in str(caught.value)
     assert "chmod 600" in str(caught.value)
+
+
+def test_key_file_owned_by_another_user_is_refused_at_startup(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, key_file: Path
+) -> None:
+    monkeypatch.setattr(os, "getuid", lambda: key_file.stat().st_uid + 1)
+    with pytest.raises(ConfigError, match="owned by you"):
+        load_config(env)
+
+
+def test_repr_never_shows_key_id_or_issuer_id(env: dict[str, str]) -> None:
+    """Regression (INFO): a ToolContext repr in a log line must not leak these IDs."""
+    config = load_config(env)
+    assert KEY_ID not in repr(config)
+    assert ISSUER not in repr(config)
+    assert KEY_ID not in str(config)

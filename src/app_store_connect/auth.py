@@ -17,8 +17,9 @@ from collections.abc import Callable
 from typing import Any, Final
 
 import jwt
+from cryptography.exceptions import UnsupportedAlgorithm
 
-from app_store_connect.config import Config
+from app_store_connect.config import Config, KeyFileError, read_key_file
 
 AUDIENCE: Final = "appstoreconnect-v1"
 TOKEN_LIFETIME_SECONDS: Final = 15 * 60  # Apple allows up to 20 minutes; we stay well below
@@ -60,16 +61,22 @@ class TokenProvider:
 
     def _sign(self, issued_at: int) -> str:
         try:
-            key = self._config.private_key_path.read_text(encoding="utf-8")
+            key = read_key_file(self._config.private_key_path)
+        except KeyFileError as exc:
+            raise AuthError(f"Could not sign the API token. {exc}") from None
+        try:
             return jwt.encode(
                 self._claims(issued_at),
                 key,
                 algorithm="ES256",
                 headers={"kid": self._config.key_id, "typ": "JWT"},
             )
-        except (OSError, ValueError, jwt.PyJWTError) as exc:
+        except (TypeError, UnsupportedAlgorithm, ValueError, jwt.PyJWTError) as exc:
+            # TypeError: PyJWT's answer to an encrypted key. UnsupportedAlgorithm / InvalidKeyError:
+            # a key type we cannot use. ValueError: not a PEM key at all.
             # Deliberately not chaining the original text: it could quote key material.
             raise AuthError(
-                f"Could not sign the API token ({type(exc).__name__}). Check that "
-                "ASC_PRIVATE_KEY_PATH points to the .p8 file downloaded from App Store Connect."
+                f"Could not sign the API token ({type(exc).__name__}): unsupported or encrypted "
+                "key. ASC_PRIVATE_KEY_PATH must point to the unencrypted ES256 .p8 file "
+                "downloaded from App Store Connect."
             ) from None

@@ -24,6 +24,12 @@ def _base(env_name: str, fallback: tuple[str, ...], env: Mapping[str, str] | Non
     return Path.home().joinpath(*fallback)
 
 
+def tildify(text: str) -> str:
+    """Replace the home folder with ~ so messages shown to the model do not reveal the user name."""
+    home = str(Path.home())
+    return text.replace(home, "~") if home not in ("", "/") else text
+
+
 def state_dir(env: Mapping[str, str] | None = None) -> Path:
     """Folder for review records and run files (under XDG_STATE_HOME, else ~/.local/state)."""
     return _base("XDG_STATE_HOME", (".local", "state"), env) / APP_NAME

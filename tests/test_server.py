@@ -161,3 +161,14 @@ def test_create_app_with_good_env(tmp_path: Path) -> None:
     assert app.startup_error is None
     assert app.config is not None
     assert app.config.allow_writes
+
+
+def test_degraded_mode_error_shows_the_home_folder_as_tilde(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = Path.home()
+    key = home / "secret-project" / "AuthKey_ABCDEFGHIJ.p8"
+    app = create_app({"ASC_KEY_ID": "K", "ASC_ISSUER_ID": "I", "ASC_PRIVATE_KEY_PATH": str(key)})
+    assert app.startup_error is not None
+    assert str(home) not in app.startup_error
+    assert "~/secret-project" in app.startup_error

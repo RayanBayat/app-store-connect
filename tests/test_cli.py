@@ -6,6 +6,8 @@ from pathlib import Path
 
 import httpx
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 from app_store_connect import cli
 from app_store_connect.auth import TokenProvider
@@ -128,3 +130,18 @@ def test_doctor_masks_key_id_in_key_file_name(
     env["ASC_PRIVATE_KEY_PATH"] = str(named)
     assert cli.cmd_doctor(env, online=False) == 0
     assert env["ASC_KEY_ID"] not in capsys.readouterr().out
+
+
+def test_doctor_with_an_encrypted_key_fails_cleanly(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression (L6): an encrypted key used to crash doctor with a TypeError."""
+    env = good_env(tmp_path)
+    pem = ec.generate_private_key(ec.SECP256R1()).private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.BestAvailableEncryption(b"pw"),
+    )
+    Path(env["ASC_PRIVATE_KEY_PATH"]).write_bytes(pem)
+    assert cli.cmd_doctor(env, online=False) == 1
+    assert "unsupported or encrypted" in capsys.readouterr().out
