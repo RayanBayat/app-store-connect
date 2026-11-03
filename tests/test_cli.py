@@ -116,3 +116,15 @@ async def test_online_check_uses_only_a_list_call(
     monkeypatch.setattr(cli, "AscClient", fake_client)
     assert (await cli.online_check(good_env(tmp_path))).startswith("OK")
     assert seen == [("GET", "/v1/apps")]
+
+
+def test_doctor_masks_key_id_in_key_file_name(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env = good_env(tmp_path)
+    original = Path(env["ASC_PRIVATE_KEY_PATH"])
+    named = original.with_name(f"AuthKey_{env['ASC_KEY_ID']}.p8")
+    original.rename(named)
+    env["ASC_PRIVATE_KEY_PATH"] = str(named)
+    assert cli.cmd_doctor(env, online=False) == 0
+    assert env["ASC_KEY_ID"] not in capsys.readouterr().out

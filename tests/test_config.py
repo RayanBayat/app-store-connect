@@ -9,9 +9,11 @@ import pytest
 from app_store_connect.config import (
     Config,
     ConfigError,
+    chmod_target,
     is_truthy,
     load_config,
     mask_key_id,
+    masked_path,
     parse_review_days,
 )
 
@@ -168,3 +170,35 @@ def test_review_days_valid(value: str, expected: int) -> None:
 )
 def test_is_truthy(value: str | None, expected: bool) -> None:
     assert is_truthy(value) is expected
+
+
+def test_masked_path_hides_key_id_in_apple_file_name(tmp_path: Path) -> None:
+    shown = masked_path(tmp_path / f"AuthKey_{KEY_ID}.p8")
+    assert shown.endswith("AuthKey_******2345.p8")
+    assert KEY_ID not in shown
+
+
+def test_masked_path_leaves_other_file_names_alone(tmp_path: Path) -> None:
+    path = tmp_path / "my-key.p8"
+    assert masked_path(path) == str(path)
+
+
+def test_chmod_hint_matches_the_real_file_without_the_key_id(tmp_path: Path) -> None:
+    path = tmp_path / f"AuthKey_{KEY_ID}.p8"
+    path.write_text("x", encoding="utf-8")
+    target = chmod_target(path)
+    assert KEY_ID not in target
+    folder, pattern = target.rsplit("/", 1)
+    assert folder.strip("'") == str(tmp_path)
+    assert list(tmp_path.glob(pattern)) == [path]
+
+
+def test_open_key_file_message_hides_key_id(env: dict[str, str], tmp_path: Path) -> None:
+    named = tmp_path / f"AuthKey_{KEY_ID}.p8"
+    named.write_text(KEY_BODY, encoding="utf-8")
+    named.chmod(0o644)
+    env["ASC_PRIVATE_KEY_PATH"] = str(named)
+    with pytest.raises(ConfigError) as caught:
+        load_config(env)
+    assert KEY_ID not in str(caught.value)
+    assert "chmod 600" in str(caught.value)

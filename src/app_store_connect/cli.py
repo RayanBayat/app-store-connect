@@ -19,6 +19,7 @@ from app_store_connect.config import (
     ConfigError,
     is_truthy,
     load_config,
+    masked_path,
     parse_review_days,
 )
 from app_store_connect.maintenance import make_report, status_text
@@ -92,7 +93,8 @@ def check_credentials(env: Mapping[str, str]) -> list[str]:
         return [str(exc)]
     lines = [
         f"OK  settings are valid (key ID {config.masked_key_id}, {config.key_kind} key)",
-        f"OK  key file {config.private_key_path} is private (mode 600 in a private folder)",
+        f"OK  key file {masked_path(config.private_key_path)} is private "
+        "(mode 600 in a private folder)",
     ]
     try:
         TokenProvider(config).token()

@@ -37,7 +37,7 @@ and often with Conventional Commit messages.
 - Never return or log tokens, keys or the issuer ID.
 - Never read real credentials, never contact the real Apple API from tests or tooling: use the
   mocked transport in `tests/apple_fake.py`.
-- Never push, publish or change the user's MCP configuration.
+- Never push, publish or change the user's MCP configuration unless the maintainer explicitly asks.
 
 ## Dependency and spec changes
 

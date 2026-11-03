@@ -10,6 +10,8 @@ last 4 characters of the key ID.
 
 from __future__ import annotations
 
+import re
+import shlex
 import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -53,6 +55,34 @@ def mask_key_id(key_id: str) -> str:
     return "*" * max(len(key_id) - 4, 0) + key_id[-4:]
 
 
+# Apple names downloaded keys AuthKey_<KEY ID>.p8, so the file name contains the key ID.
+_KEY_FILE_NAME = re.compile(r"(AuthKey_)([A-Za-z0-9]+)([A-Za-z0-9]{4})(\.p8)")
+
+
+def masked_path(path: Path) -> str:
+    """Return `path` for messages, hiding the key ID in an AuthKey_<ID>.p8 file name.
+
+    Without this, the masked key ID shown elsewhere would be undone by the file name.
+    """
+    match = _KEY_FILE_NAME.fullmatch(path.name)
+    if match is None:
+        return str(path)
+    hidden = "*" * len(match[2])
+    return str(path.with_name(f"{match[1]}{hidden}{match[3]}{match[4]}"))
+
+
+def chmod_target(path: Path) -> str:
+    """Return a shell argument for fix-it hints that still matches the real file.
+
+    A pattern like AuthKey_*ABCD.p8 lets people copy-paste the chmod command without
+    the message spelling out the whole key ID.
+    """
+    match = _KEY_FILE_NAME.fullmatch(path.name)
+    if match is None:
+        return shlex.quote(str(path))
+    return f"{shlex.quote(str(path.parent))}/{match[1]}*{match[3]}{match[4]}"
+
+
 def parse_review_days(raw: str | None) -> int:
     """Return the allowed review age in days; anything invalid falls back to 30.
 
@@ -77,14 +107,14 @@ def check_key_file(path: Path) -> list[str]:
     """Return problems with the key file and its folder (empty list means fine)."""
     if not path.is_file():
         return [
-            f"The key file {path} does not exist or is not a regular file. "
+            f"The key file {masked_path(path)} does not exist or is not a regular file. "
             "Check ASC_PRIVATE_KEY_PATH points to your AuthKey_XXXXXXXXXX.p8 file."
         ]
     problems: list[str] = []
     if stat.S_IMODE(path.stat().st_mode) & OPEN_BITS:
         problems.append(
-            f"The key file {path} can be read or changed by other users. "
-            f"Fix it with: chmod 600 {path}"
+            f"The key file {masked_path(path)} can be read or changed by other users. "
+            f"Fix it with: chmod 600 {chmod_target(path)}"
         )
     folder = path.resolve().parent
     if stat.S_IMODE(folder.stat().st_mode) & OPEN_BITS:
