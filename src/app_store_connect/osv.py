@@ -11,6 +11,8 @@ from typing import Any, Final
 
 import httpx
 
+from app_store_connect.textsafe import untrusted
+
 OSV_BATCH_URL: Final = "https://api.osv.dev/v1/querybatch"
 OSV_VULN_URL: Final = "https://api.osv.dev/v1/vulns/"
 ECOSYSTEM: Final = "PyPI"
@@ -117,5 +119,7 @@ def format_vulnerabilities(vulns: list[Vulnerability]) -> str:
     lines: list[str] = []
     for v in vulns:
         fixes = ", ".join(v.fixed_in) or "none listed"
-        lines.append(f"- `{v.package} {v.version}`: {v.vuln_id} - {v.summary} (fixed in: {fixes})")
+        lines.append(
+            f"- `{v.package} {v.version}`: {v.vuln_id} - {untrusted(v.summary)} (fixed in: {fixes})"
+        )
     return "\n".join(lines)

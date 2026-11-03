@@ -16,6 +16,7 @@ from app_store_connect.tools.base import (
     to_text,
 )
 
+WRAPPED = ("name",)  # an app name is typed by a person
 APP_FIELDS = ("name", "bundleId", "sku", "primaryLocale")
 
 
@@ -27,13 +28,13 @@ async def list_apps(ctx: ToolContext, args: dict[str, Any]) -> str:
     if bundle_id := optional_str(args, "bundle_id"):
         params["filter[bundleId]"] = bundle_id
     items = await ctx.client.paginate("/v1/apps", params=params, max_items=limit_arg(args))
-    return to_text([summarize(item, APP_FIELDS) for item in items])
+    return to_text([summarize(item, APP_FIELDS, wrap=WRAPPED) for item in items])
 
 
 async def get_app(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Return one app's details."""
     data = await ctx.client.request("GET", "/v1/apps/{id}", item_id=require_str(args, "app_id"))
-    return to_text(summarize(data["data"], APP_FIELDS))
+    return to_text(summarize(data["data"], APP_FIELDS, wrap=WRAPPED))
 
 
 READ_TOOLS = [

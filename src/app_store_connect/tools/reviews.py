@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Final
 
 from app_store_connect.client import AscError
+from app_store_connect.textsafe import untrusted
 from app_store_connect.tools.base import (
     LIMIT_PROP,
     ToolContext,
@@ -17,11 +18,11 @@ from app_store_connect.tools.base import (
     string_prop,
     summarize,
     to_text,
-    untrusted,
 )
 from app_store_connect.tools.confirm import confirm_change
 from app_store_connect.tools.versions import PLATFORMS, choice
 
+REVIEW_WRAPPED: Final = ("reviewerNickname",)
 REVIEW_FIELDS: Final = ("rating", "reviewerNickname", "createdDate", "territory")
 # Apple documents 5970 characters for a developer response (App Store Connect Help).
 MAX_REPLY_CHARS: Final = 5970
@@ -30,7 +31,7 @@ MAX_REPLY_CHARS: Final = 5970
 def review_view(item: dict[str, Any]) -> dict[str, Any]:
     """A review with its free text wrapped as untrusted content."""
     attributes = item.get("attributes") or {}
-    view = summarize(item, REVIEW_FIELDS)
+    view = summarize(item, REVIEW_FIELDS, wrap=REVIEW_WRAPPED)
     view["title"] = untrusted(attributes.get("title"))
     view["body"] = untrusted(attributes.get("body"))
     return view

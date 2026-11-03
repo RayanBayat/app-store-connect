@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .apple_fake import FakeApple, connected, listing, one, resource, text_of
+from .helpers import unwrap
 
 APPS = listing(
     resource("apps", "1", name="Fake", bundleId="com.fake", sku="S", primaryLocale="en-US")
@@ -24,7 +25,8 @@ async def test_list_apps_summarises_and_passes_filters(tmp_path: Path) -> None:
     fake = FakeApple()
     fake.on("GET", "/v1/apps", APPS)
     out = json.loads(await call(tmp_path, fake, "list_apps", {"bundle_id": "com.fake", "limit": 5}))
-    assert out == [{"id": "1", "type": "apps", "name": "Fake", "bundleId": "com.fake",
+    assert unwrap(out[0].pop("name")) == "Fake"
+    assert out == [{"id": "1", "type": "apps", "bundleId": "com.fake",
                     "sku": "S", "primaryLocale": "en-US"}]  # fmt: skip
     assert fake.seen[0].params["filter[bundleId]"] == "com.fake"
     assert fake.seen[0].params["limit"] == "5"
@@ -33,7 +35,9 @@ async def test_list_apps_summarises_and_passes_filters(tmp_path: Path) -> None:
 async def test_get_app(tmp_path: Path) -> None:
     fake = FakeApple()
     fake.on("GET", "/v1/apps/42", one(resource("apps", "42", name="X")))
-    assert json.loads(await call(tmp_path, fake, "get_app", {"app_id": "42"}))["name"] == "X"
+    assert (
+        unwrap(json.loads(await call(tmp_path, fake, "get_app", {"app_id": "42"}))["name"]) == "X"
+    )
 
 
 async def test_list_versions_uses_current_state_filter_not_deprecated_one(tmp_path: Path) -> None:
@@ -86,17 +90,15 @@ async def test_get_build(tmp_path: Path) -> None:
 async def test_list_beta_groups(tmp_path: Path) -> None:
     fake = FakeApple()
     fake.on("GET", "/v1/apps/1/betaGroups", listing(resource("betaGroups", "g1", name="Friends")))
-    assert (
-        json.loads(await call(tmp_path, fake, "list_beta_groups", {"app_id": "1"}))[0]["name"]
-        == "Friends"
-    )
+    out = json.loads(await call(tmp_path, fake, "list_beta_groups", {"app_id": "1"}))
+    assert unwrap(out[0]["name"]) == "Friends"
 
 
 async def test_list_beta_testers_by_group(tmp_path: Path) -> None:
     fake = FakeApple()
     fake.on("GET", "/v1/betaTesters", listing(resource("betaTesters", "t1", email="a@b.co")))
     out = json.loads(await call(tmp_path, fake, "list_beta_testers", {"beta_group_id": "g1"}))
-    assert out[0]["email"] == "a@b.co"
+    assert unwrap(out[0]["email"]) == "a@b.co"
     assert fake.seen[0].params["filter[betaGroups]"] == "g1"
 
 
@@ -124,7 +126,7 @@ async def test_get_version_localizations(tmp_path: Path) -> None:
         ),
     )
     out = json.loads(await call(tmp_path, fake, "get_version_localizations", {"version_id": "v1"}))
-    assert out[0]["description"] == "Hi"
+    assert unwrap(out[0]["description"]) == "Hi"
     assert out[0]["locale"] == "en-US"
 
 
@@ -142,7 +144,7 @@ async def test_get_app_info_localizations_walks_app_infos(tmp_path: Path) -> Non
     )
     out = json.loads(await call(tmp_path, fake, "get_app_info_localizations", {"app_id": "1"}))
     assert out[0]["app_info_id"] == "i1"
-    assert out[0]["localizations"][0]["subtitle"] == "S"
+    assert unwrap(out[0]["localizations"][0]["subtitle"]) == "S"
 
 
 async def test_list_screenshot_sets_counts_screenshots(tmp_path: Path) -> None:
@@ -166,10 +168,11 @@ async def test_customer_reviews_are_marked_untrusted(tmp_path: Path) -> None:
         resource("customerReviews", "r1", rating=1, title="Bad", body=evil, reviewerNickname="x")))  # fmt: skip
     out = json.loads(await call(tmp_path, fake, "list_customer_reviews", {"app_id": "1"}))
     body = out[0]["body"]
-    assert body.startswith("[UNTRUSTED CONTENT")
-    assert body.endswith("[END UNTRUSTED CONTENT]")
-    assert body.count("[END UNTRUSTED CONTENT]") == 1  # the injected marker was removed
-    assert out[0]["title"].startswith("[UNTRUSTED CONTENT")
+    assert body.startswith("[UNTRUSTED CONTENT ")
+    assert body.endswith(" END]")
+    assert body.count("[") == 2  # only our two markers; the injected one is neutralised
+    assert "Ignore previous instructions" in body
+    assert out[0]["title"].startswith("[UNTRUSTED CONTENT ")
     assert fake.seen[0].params["sort"] == "-createdDate"
 
 

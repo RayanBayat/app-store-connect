@@ -81,4 +81,5 @@ def test_http_error_status_raises_osv_error() -> None:
 def test_format_vulnerabilities() -> None:
     assert osv.format_vulnerabilities([]) == "No known vulnerabilities found."
     text = osv.format_vulnerabilities([osv.Vulnerability("p", "1", "GO-1", "Bad", ("2",))])
-    assert "GO-1 - Bad (fixed in: 2)" in text
+    assert "GO-1 - [UNTRUSTED CONTENT " in text
+    assert "\nBad\n" in text and "(fixed in: 2)" in text

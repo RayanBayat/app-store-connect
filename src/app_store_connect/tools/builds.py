@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app_store_connect.textsafe import untrusted
 from app_store_connect.tools.base import (
     LIMIT_PROP,
     ToolContext,
@@ -91,7 +92,7 @@ async def add_build_to_beta_group(ctx: ToolContext, args: dict[str, Any]) -> str
     await ctx.client.request(
         "POST", "/v1/betaGroups/{id}/relationships/builds", item_id=group_id, body=body
     )
-    return f"Added {label} to beta group {name}."
+    return f"Added {label} to beta group {untrusted(name)}."
 
 
 async def submit_build_for_beta_review(ctx: ToolContext, args: dict[str, Any]) -> str:

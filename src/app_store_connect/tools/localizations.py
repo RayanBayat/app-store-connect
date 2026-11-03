@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Final
 
+from app_store_connect.textsafe import wrap_strings
 from app_store_connect.tools.base import (
     ToolContext,
     ToolInputError,
@@ -45,7 +46,7 @@ async def get_version_localizations(ctx: ToolContext, args: dict[str, Any]) -> s
         "/v1/appStoreVersions/{id}/appStoreVersionLocalizations",
         item_id=require_str(args, "version_id"),
     )
-    return to_text([summarize(item, VERSION_FIELDS) for item in items])
+    return to_text([summarize(item, VERSION_FIELDS, wrap=VERSION_TEXT_FIELDS) for item in items])
 
 
 async def get_app_info_localizations(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -59,8 +60,10 @@ async def get_app_info_localizations(ctx: ToolContext, args: dict[str, Any]) -> 
         result.append(
             {
                 "app_info_id": info["id"],
-                "attributes": info.get("attributes") or {},
-                "localizations": [summarize(item, INFO_FIELDS) for item in items],
+                "attributes": wrap_strings(info.get("attributes") or {}),
+                "localizations": [
+                    summarize(item, INFO_FIELDS, wrap=INFO_TEXT_FIELDS) for item in items
+                ],
             }
         )
     return to_text(result)
@@ -101,7 +104,7 @@ async def update_localization(
     await confirm_change(ctx, title, lines)
     body = {"data": {"type": kind, "id": loc_id, "attributes": changed}}
     data = await ctx.client.request("PATCH", template, item_id=loc_id, body=body)
-    return "Updated: " + to_text(summarize(data["data"], tuple(changed)))
+    return "Updated: " + to_text(summarize(data["data"], tuple(changed), wrap=tuple(changed)))
 
 
 async def update_version_localization(ctx: ToolContext, args: dict[str, Any]) -> str:

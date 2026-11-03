@@ -42,7 +42,10 @@ async def list_screenshot_sets(ctx: ToolContext, args: dict[str, Any]) -> str:
             {
                 **summarize(item, ("screenshotDisplayType",)),
                 "screenshot_count": len(shots),
-                "screenshots": [summarize(s, ("fileName", "assetDeliveryState")) for s in shots],
+                "screenshots": [
+                    summarize(s, ("fileName", "assetDeliveryState"), wrap=("fileName",))
+                    for s in shots
+                ],
             }
         )
     return to_text(result)
@@ -137,7 +140,9 @@ async def upload_screenshot(ctx: ToolContext, args: dict[str, Any]) -> str:
     done = await ctx.client.request(
         "PATCH", "/v1/appScreenshots/{id}", item_id=str(created["id"]), body=commit
     )
-    return "Uploaded: " + to_text(summarize(done["data"], ("fileName", "assetDeliveryState")))
+    return "Uploaded: " + to_text(
+        summarize(done["data"], ("fileName", "assetDeliveryState"), wrap=("fileName",))
+    )
 
 
 READ_TOOLS = [

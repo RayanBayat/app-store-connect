@@ -39,3 +39,9 @@ def make_config(folder: Path, **overrides: object) -> Config:
     }
     values.update(overrides)
     return Config(**values)  # type: ignore[arg-type]
+
+
+def unwrap(value: str) -> str:
+    """The text inside an untrusted-content block (drops the begin and end marker lines)."""
+    assert value.startswith("[UNTRUSTED CONTENT ")
+    return "\n".join(value.split("\n")[1:-1])

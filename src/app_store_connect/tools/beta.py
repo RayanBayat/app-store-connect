@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, Final
 
+from app_store_connect.textsafe import untrusted
 from app_store_connect.tools.base import (
     LIMIT_PROP,
     ToolContext,
@@ -21,6 +22,8 @@ from app_store_connect.tools.confirm import confirm_change
 
 EMAIL_PATTERN: Final = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 GROUP_FIELDS = ("name", "isInternalGroup", "publicLinkEnabled", "createdDate")
+GROUP_WRAPPED = ("name",)
+TESTER_WRAPPED = ("firstName", "lastName", "email")
 TESTER_FIELDS = ("firstName", "lastName", "email", "inviteType", "state")
 
 
@@ -29,7 +32,7 @@ async def list_beta_groups(ctx: ToolContext, args: dict[str, Any]) -> str:
     items = await ctx.client.paginate(
         "/v1/apps/{id}/betaGroups", item_id=require_str(args, "app_id"), max_items=limit_arg(args)
     )
-    return to_text([summarize(item, GROUP_FIELDS) for item in items])
+    return to_text([summarize(item, GROUP_FIELDS, wrap=GROUP_WRAPPED) for item in items])
 
 
 async def list_beta_testers(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -44,7 +47,7 @@ async def list_beta_testers(ctx: ToolContext, args: dict[str, Any]) -> str:
     if email := optional_str(args, "email"):
         params["filter[email]"] = email
     items = await ctx.client.paginate("/v1/betaTesters", params=params, max_items=limit_arg(args))
-    return to_text([summarize(item, TESTER_FIELDS) for item in items])
+    return to_text([summarize(item, TESTER_FIELDS, wrap=TESTER_WRAPPED) for item in items])
 
 
 READ_TOOLS = [
@@ -99,7 +102,7 @@ async def add_beta_tester(ctx: ToolContext, args: dict[str, Any]) -> str:
         }
     }
     data = await ctx.client.request("POST", "/v1/betaTesters", body=body)
-    return to_text(summarize(data["data"], TESTER_FIELDS))
+    return to_text(summarize(data["data"], TESTER_FIELDS, wrap=TESTER_WRAPPED))
 
 
 async def remove_beta_tester(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -114,7 +117,7 @@ async def remove_beta_tester(ctx: ToolContext, args: dict[str, Any]) -> str:
     await ctx.client.request(
         "DELETE", "/v1/betaGroups/{id}/relationships/betaTesters", item_id=group_id, body=body
     )
-    return f"Removed {email} from beta group {name}."
+    return f"Removed {untrusted(str(email))} from beta group {untrusted(name)}."
 
 
 WRITE_TOOLS = [
