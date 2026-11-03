@@ -1,6 +1,11 @@
 __pycache__/
 *.py[cod]
+*.so
+build/
+dist/
+*.egg-info/
 .venv/
+venv/
 .env
 .env.*
 !.env.example
@@ -8,4 +13,10 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .coverage
-*.egg-info/
+coverage.xml
+htmlcov/
+.vscode/
+.idea/
+.DS_Store
+*.log
+*.p8
