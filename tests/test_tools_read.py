@@ -146,6 +146,7 @@ async def test_get_app_info_localizations_walks_app_infos(tmp_path: Path) -> Non
     )
     out = json.loads(await call(tmp_path, fake, "get_app_info_localizations", {"app_id": "1"}))
     assert out[0]["app_info_id"] == "i1"
+    assert out[0]["attributes"] == {"state": "READY_FOR_DISTRIBUTION"}  # Apple enums: plain
     assert unwrap(out[0]["localizations"][0]["subtitle"]) == "S"
 
 

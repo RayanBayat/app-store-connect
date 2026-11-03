@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Final
 
-from app_store_connect.textsafe import wrap_strings
 from app_store_connect.tools.base import (
     ToolContext,
     ToolInputError,
@@ -68,7 +67,8 @@ async def get_app_info_localizations(ctx: ToolContext, args: dict[str, Any]) -> 
         result.append(
             {
                 "app_info_id": info["id"],
-                "attributes": wrap_strings(info.get("attributes") or {}),
+                # Apple's own values (state, age ratings): nobody types them, so no wrapping.
+                "attributes": info.get("attributes") or {},
                 "localizations": [
                     summarize(item, INFO_FIELDS, wrap=INFO_TEXT_FIELDS) for item in items
                 ],
