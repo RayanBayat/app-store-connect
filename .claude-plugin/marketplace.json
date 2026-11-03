@@ -1,0 +1,16 @@
+{
+  "name": "asc-mcp-maintenance",
+  "owner": {
+    "name": "Rayan Bayat"
+  },
+  "metadata": {
+    "description": "Maintenance gate and review guide for the App Store Connect MCP server."
+  },
+  "plugins": [
+    {
+      "name": "asc-mcp-maintenance",
+      "source": "./",
+      "description": "Blocks the App Store Connect MCP server's tools once a monthly review is due, and guides that review."
+    }
+  ]
+}
