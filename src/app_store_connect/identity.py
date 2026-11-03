@@ -57,8 +57,19 @@ def current_identity() -> CodeIdentity:
     return CodeIdentity(__version__, commit_from_direct_url(_direct_url_text()))
 
 
-def compare_with_review(reviewed: CodeIdentity | None, running: CodeIdentity) -> list[str]:
-    """Plain lines saying whether the running code is the code that was last reviewed."""
+def compare_with_review(
+    reviewed: CodeIdentity | None, running: CodeIdentity, *, has_review: bool = True
+) -> list[str]:
+    """Plain lines saying whether the running code is the code that was last reviewed.
+
+    `has_review` is False when no review exists at all (a first review is coming), which is
+    different from an old review record that did not store the code identity.
+    """
+    if not has_review:
+        return [
+            f"Running code: {running.describe()}.",
+            "No earlier review; this will be the first.",
+        ]
     if reviewed is None or not reviewed.version:
         return [
             f"Running code: {running.describe()}.",

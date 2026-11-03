@@ -35,6 +35,7 @@ from app_store_connect.report import (
     ReportInputs,
     ReportResult,
     build_report_with_facts,
+    direct_packages,
     installed_packages,
 )
 from app_store_connect.review import (
@@ -138,6 +139,7 @@ def make_report_result(current_tools: list[str]) -> ReportResult:
             review=load_review(),
             current_tools=current_tools,
             packages=installed_packages(),
+            direct_packages=direct_packages(),
         )
         return build_report_with_facts(inputs)
 
@@ -167,7 +169,9 @@ def describe_review(review: Review | None, now: datetime, max_days: int) -> list
 def status_text(*, max_days: int, now: datetime, review: Review | None, writes: bool | None) -> str:
     """Build the text of maintenance_status (shared with the `status` command)."""
     lines = describe_review(review, now, max_days)
-    lines += compare_with_review(review.code if review else None, current_identity())
+    lines += compare_with_review(
+        review.code if review else None, current_identity(), has_review=review is not None
+    )
     lines.append(f"Apple API spec checked against: {APPLE_API_SPEC_VERSION}")
     lines.append(f"app-store-connect version: {__version__}")
     if writes is not None:
@@ -322,7 +326,9 @@ def review_form(summary: str, built_at: datetime, facts: ReportFacts, review: Re
         f"parts not checked: {facts.not_checked}",
         f"- Known vulnerabilities in dependencies: {_count(facts.vulnerabilities)}",
         f"- Outdated dependencies: {_count(facts.outdated)}",
-        *compare_with_review(review.code if review else None, current_identity()),
+        *compare_with_review(
+            review.code if review else None, current_identity(), has_review=review is not None
+        ),
         "",
         f"Claude's summary (written by the model, not checked by the server): "
         f"{escape_display(summary)}",

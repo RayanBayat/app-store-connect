@@ -48,6 +48,12 @@ def zipped(spec: dict[str, Any]) -> bytes:
     return buffer.getvalue()
 
 
+def feed(*versions: str) -> bytes:
+    """A PyPI releases feed with the given versions (in the given order)."""
+    items = "".join(f"<item><title>{v}</title><link>x</link></item>" for v in versions)
+    return f"<?xml version='1.0'?><rss><channel><title>t</title>{items}</channel></rss>".encode()
+
+
 def make_inputs(
     spec: dict[str, Any] | None = None,
     *,
@@ -58,16 +64,16 @@ def make_inputs(
     spec_status: int = 200,
 ) -> ReportInputs:
     spec_bytes = zipped(spec or make_spec())
+    asked: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         host, path = request.url.host, request.url.path
         if host == "developer.apple.com":
             return httpx.Response(spec_status, content=spec_bytes)
         if host == "pypi.org":
-            name = path.split("/")[2]
-            return httpx.Response(
-                200, json={"info": {"version": (latest or {}).get(name, "1.0.0")}}
-            )
+            asked.append(path)
+            name = path.split("/")[3]
+            return httpx.Response(200, content=feed((latest or {}).get(name, "1.0.0")))
         if request.method == "POST":
             count = len(json.loads(request.content)["queries"])
             one = {"vulns": [{"id": "PYSEC-9"}]} if vulns else {}
@@ -79,7 +85,8 @@ def make_inputs(
         now=NOW,
         review=review,
         current_tools=tools or ["list_apps"],
-        packages=[("httpx", "1.0.0"), ("pyjwt", "1.0.0")],
+        packages=[("httpx", "1.0.0"), ("pyjwt", "1.0.0"), ("pydantic_core", "2.0.0")],
+        direct_packages=[("httpx", "1.0.0"), ("pyjwt", "1.0.0")],
     )
 
 
@@ -125,6 +132,47 @@ def test_outdated_dependencies_listed() -> None:
     text = build_report(make_inputs(latest={"httpx": "2.0.0"}))
     assert "`httpx` 1.0.0 -> 2.0.0" in text
     assert "pyjwt` 1.0.0 ->" not in text
+
+
+def test_only_direct_dependencies_are_checked_for_new_releases_but_osv_sees_all() -> None:
+    inputs = make_inputs(vulns=True)
+    asked: list[str] = []
+    osv_names: list[str] = []
+    inner = inputs.client._transport  # the mock transport built in make_inputs
+
+    def spy(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "pypi.org":
+            asked.append(request.url.path)
+        if request.url.host == "api.osv.dev" and request.method == "POST":
+            osv_names.extend(q["package"]["name"] for q in json.loads(request.content)["queries"])
+        return inner.handle_request(request)
+
+    spied = replace(inputs, client=httpx.Client(transport=httpx.MockTransport(spy)))
+    build_report(spied)
+    assert sorted(asked) == ["/rss/project/httpx/releases.xml", "/rss/project/pyjwt/releases.xml"]
+    assert "pydantic_core" in osv_names and "httpx" in osv_names
+
+
+def test_latest_stable_ignores_prereleases_and_order() -> None:
+    text = feed("2.0.0rc1", "1.9.0", "3.0.0.dev1", "1.10.0", "2.0.0a1", "1.10.0b2").decode()
+    assert report.latest_stable(text) == "1.10.0"
+    assert report.latest_stable(feed("1.0rc1").decode()) is None
+
+
+def test_feed_problems_are_not_checked_not_ok() -> None:
+    for response in (httpx.Response(500), httpx.Response(200, content=feed("1.0.0rc1"))):
+        client = httpx.Client(transport=httpx.MockTransport(lambda _r, r=response: r))
+        with pytest.raises(report.ReportError, match="PyPI lookup"):
+            report.latest_on_pypi(client, "httpx")
+    broken = replace(make_inputs(), client=httpx.Client(transport=httpx.MockTransport(
+        lambda r: httpx.Response(500) if r.url.host == "pypi.org" else httpx.Response(200, json={"results": [{}, {}, {}]}))))  # fmt: skip
+    assert "NOT CHECKED" in build_report(broken)
+
+
+def test_direct_packages_are_our_pins_from_package_metadata() -> None:
+    names = {name.lower() for name, _ in report.direct_packages()}
+    assert {"httpx", "mcp", "pyjwt", "cryptography"} <= names
+    assert "pydantic-core" not in names and "pydantic_core" not in names
 
 
 def test_vulnerabilities_listed() -> None:

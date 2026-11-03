@@ -20,7 +20,7 @@ def client_for(handler: Handler) -> httpx.Client:
 
 def test_oversized_pypi_answer_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(report, "MAX_PYPI_BYTES", 1000)
-    big = json.dumps({"info": {"version": "9"}, "pad": "x" * 5000}).encode()
+    big = b"<rss>" + b"x" * 5000 + b"</rss>"
     with pytest.raises(report.ReportError, match="larger than"):
         report.latest_on_pypi(client_for(lambda _r: httpx.Response(200, content=big)), "httpx")
 

@@ -66,6 +66,20 @@ def test_compare_says_clearly_when_code_differs() -> None:
         text = " ".join(compare_with_review(reviewed, running))
         assert "NOT the code that was last reviewed" in text
     assert "did not record" in " ".join(compare_with_review(None, running))
+    first = " ".join(compare_with_review(None, running, has_review=False))
+    assert "No earlier review; this will be the first" in first
+    assert "did not record" not in first
+
+
+def test_first_review_report_and_form_say_there_is_no_earlier_review() -> None:
+    assert "No earlier review; this will be the first" in report_text(None)
+    status = maintenance.status_text(max_days=30, now=NOW, review=None, writes=None)
+    assert "No earlier review" in status and "did not record" not in status
+
+
+def test_old_record_without_identity_keeps_the_did_not_record_text() -> None:
+    old = Review(NOW, "4.5.1", "ok")
+    assert "did not record" in report_text(old)
 
 
 def test_report_and_status_show_the_difference(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -78,7 +92,7 @@ def test_report_and_status_show_the_difference(monkeypatch: pytest.MonkeyPatch) 
     assert "NOT the code that was last reviewed" in status
 
 
-def report_text(review: Review) -> str:
+def report_text(review: Review | None) -> str:
     return build_report(replace(make_inputs(), review=review))
 
 

@@ -36,11 +36,11 @@ from app_store_connect.tools import apps, beta, builds, localizations, reviews, 
 
 MAX_SPEC_ZIP_BYTES: Final = 30 * 1024 * 1024
 MAX_SPEC_JSON_BYTES: Final = 60 * 1024 * 1024
-MAX_PYPI_BYTES: Final = 5 * 1024 * 1024
+MAX_PYPI_BYTES: Final = 1024 * 1024  # a releases feed is about 15 KB
 # Apple's spec URL needs no redirect today; if it ever does, only Apple's own site is allowed.
 SPEC_REDIRECT_HOSTS: Final = ("developer.apple.com",)
 SPEC_MEMBER: Final = "openapi.oas.json"
-PYPI_URL: Final = "https://pypi.org/pypi/{name}/json"
+PYPI_FEED_URL: Final = "https://pypi.org/rss/project/{name}/releases.xml"
 OWN_PACKAGE: Final = "app-store-connect"
 METHODS: Final = ("get", "post", "patch", "put", "delete")
 EXAMPLES_SHOWN: Final = 8
@@ -105,7 +105,8 @@ class ReportInputs:
     now: datetime
     review: Review | None
     current_tools: list[str]
-    packages: list[osv.Query]
+    packages: list[osv.Query]  # every installed runtime package (for the vulnerability scan)
+    direct_packages: list[osv.Query] = field(default_factory=list)  # our own == pins
     code: CodeIdentity = field(default_factory=current_identity)
 
 
@@ -229,6 +230,25 @@ def installed_packages() -> list[osv.Query]:
     return sorted(found, key=lambda item: item[0].lower())
 
 
+def direct_packages() -> list[osv.Query]:
+    """(name, installed version) of our direct runtime dependencies, from our own metadata."""
+    try:
+        requirements = metadata.requires(OWN_PACKAGE) or []
+    except metadata.PackageNotFoundError:
+        return []
+    names = {
+        match.group(0)
+        for text in requirements
+        if "extra ==" not in text and (match := re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", text))
+    }
+    installed = dict(installed_packages())
+    by_key = {key.lower().replace("_", "-"): (key, ver) for key, ver in installed.items()}
+    found = [
+        by_key[n.lower().replace("_", "-")] for n in names if n.lower().replace("_", "-") in by_key
+    ]
+    return sorted(found, key=lambda item: item[0].lower())
+
+
 def version_tuple(text: str) -> tuple[int, ...]:
     """The leading numeric part of a version ('1.2.3rc1' -> (1, 2, 3))."""
     match = re.match(r"\d+(?:\.\d+)*", text)
@@ -240,20 +260,45 @@ def is_outdated(installed: str, latest: str) -> bool:
     return version_tuple(latest) > version_tuple(installed)
 
 
+_FEED_TITLE = re.compile(r"<item>\s*<title>([^<]+)</title>")
+_STABLE_VERSION = re.compile(r"\d+(?:\.\d+)*(?:\.post\d+)?")
+
+
+def latest_stable(feed: str) -> str | None:
+    """The highest stable version named in a PyPI releases feed (pre-releases are ignored).
+
+    The feed is read with a plain pattern, not an XML parser, so nothing in it can trigger
+    entity tricks; we only ever look at the `<title>` of each `<item>`.
+    """
+    stable = [t.strip() for t in _FEED_TITLE.findall(feed) if _STABLE_VERSION.fullmatch(t.strip())]
+    return max(stable, key=version_tuple, default=None)
+
+
 def latest_on_pypi(client: httpx.Client, name: str) -> str:
-    """Return the newest release version of `name` on PyPI."""
+    """Return the newest stable release version of `name` on PyPI.
+
+    Uses the small per-project releases feed. PyPI's JSON API lists every file of every
+    release, which is megabytes for big packages such as cryptography or pydantic-core.
+    """
     try:
-        raw = fetch_limited(client, "GET", PYPI_URL.format(name=name), limit=MAX_PYPI_BYTES)
-        return str(json.loads(raw)["info"]["version"])
-    except (DownloadError, ValueError, KeyError, TypeError) as exc:
+        raw = fetch_limited(client, "GET", PYPI_FEED_URL.format(name=name), limit=MAX_PYPI_BYTES)
+    except DownloadError as exc:
         raise ReportError(f"PyPI lookup for {name} failed: {exc}") from exc
+    latest = latest_stable(raw.decode("utf-8", "replace"))
+    if latest is None:
+        raise ReportError(f"PyPI lookup for {name} failed: no stable release in the feed.")
+    return latest
 
 
 def outdated_section(inputs: ReportInputs) -> tuple[list[str], int]:
-    """List installed dependencies that have a newer release on PyPI, and how many there are."""
+    """List our direct dependencies (the == pins) that have a newer release, and how many.
+
+    Packages below them are kept current by `uv lock --upgrade` and are covered by the
+    vulnerability scan, so asking PyPI about every one of them is not needed.
+    """
     lines = ["## Our dependencies", "", "### Outdated", ""]
     outdated: list[str] = []
-    for name, installed in inputs.packages:
+    for name, installed in inputs.direct_packages:
         latest = latest_on_pypi(inputs.client, name)
         if is_outdated(installed, latest):
             outdated.append(f"- `{name}` {installed} -> {latest}")
@@ -332,7 +377,12 @@ def guarded(
 def code_section(inputs: ReportInputs) -> list[str]:
     """Which code is running, and whether it is the code that was last reviewed."""
     reviewed = inputs.review.code if inputs.review else None
-    return ["## Running code", "", *compare_with_review(reviewed, inputs.code), ""]
+    return [
+        "## Running code",
+        "",
+        *compare_with_review(reviewed, inputs.code, has_review=inputs.review is not None),
+        "",
+    ]
 
 
 def build_report_with_facts(inputs: ReportInputs) -> ReportResult:
