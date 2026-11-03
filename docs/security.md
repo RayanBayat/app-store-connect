@@ -29,16 +29,20 @@ This server holds a key that can change a real App Store listing, so the design 
    stay on that host. Redirects are not followed. Presigned screenshot upload URLs must be
    https and get no `Authorization` header at all.
 6. **Your key stays out of the config.** You pass a *path* (`ASC_PRIVATE_KEY_PATH`). The key
-   contents (`ASC_PRIVATE_KEY`) are refused, and the file must be readable only by you
-   (mode 600 in a private folder). The key is read only when a token is signed (every 15
-   minutes at most) and is never logged.
+   contents (`ASC_PRIVATE_KEY`) are refused. At start-up and again each time a token is signed,
+   the open file must be a regular file owned by you, mode 600, under 8 KiB (and in a private
+   folder). The key is read only when a token is signed (every 15 minutes at most) and is never
+   logged.
 7. **Secrets never come back.** Results and error messages never contain the token, the key,
    or the issuer ID. The key ID is shown at most as its last 4 characters.
 8. **Files are confined.** Screenshot paths are resolved (symlinks followed) and must end up
-   inside `ASC_ROOT`; otherwise nothing is read and nothing is sent.
+   inside `ASC_ROOT` (which may not be `/`, your home folder or writable by others); the file is
+   then opened once, without following symlinks, and checked, and exactly those bytes are sent.
+   Upload instructions from Apple are only used for PUTs to https `apple.com` hosts.
 9. **Untrusted text stays untrusted.** Customer reviews are written by strangers. Their text is
-   wrapped in markers that tell the model to treat it as data, not instructions. Because writes
-   need your confirmation anyway, an injected instruction cannot change anything by itself.
+   wrapped in random per-call markers that tell the model to treat it as data, not instructions.
+   Because writes need your confirmation anyway, an injected instruction cannot change anything
+   by itself (as long as you read the form: it shows the full, escaped value).
 10. **Friendly to Apple.** Failed requests (429, 5xx) are retried at most 3 times with backoff
     and `Retry-After` is respected. A POST is never repeated after a 5xx, in case it was
     already processed.
@@ -48,11 +52,63 @@ This server holds a key that can change a real App Store listing, so the design 
 Tools stop working after 30 days without a human-confirmed review. The review record
 (`~/.local/state/app-store-connect/review.json`) is written atomically with mode 600. A missing,
 corrupt or future-dated record counts as "overdue". The record can only be written after you
-accept a form in your client, or by you in a terminal.
+accept a form in your client (which needs a report built in the same session in the last 30
+minutes), or by you in a terminal. It also stores the version and git commit of the code that
+was reviewed, and the report says when the running code is different.
 
-## What is not protected
+## What this does not protect against, and what to do about it
 
-- Anyone who can run commands as your user can read your key file and the review record.
+**All of the protections above assume the AI agent cannot run arbitrary commands as your OS
+user.** They stop a model that is confused, tricked by text in a review, or simply wrong. They do
+not stop an agent that has a shell or file-write access as the same user, which is the default in
+Claude Code. That agent could:
+
+- read the `.p8` key file (it is mode 600, but it is *your* file and the agent runs as you);
+- edit `~/.local/state/app-store-connect/review.json` to fake a fresh review;
+- fake a terminal (for example with a pseudo-terminal) to pass the `review` command's TTY check;
+- edit the MCP configuration (for example `~/.claude.json`) to add `ASC_ALLOW_WRITES=1`, or to
+  start a different server with your key.
+
+What to do, from cheapest to strongest:
+
+1. **Claude Code permission deny rules** for the key folder, the state folder and the MCP
+   configuration. In `~/.claude/settings.json`:
+
+   ```json
+   {
+     "permissions": {
+       "deny": [
+         "Read(~/.config/app-store-connect/**)",
+         "Edit(~/.config/app-store-connect/**)",
+         "Read(~/.local/state/app-store-connect/**)",
+         "Edit(~/.local/state/app-store-connect/**)",
+         "Edit(~/.claude.json)",
+         "Edit(~/.claude/settings.json)"
+       ]
+     }
+   }
+   ```
+
+   Change the first four paths if you keep the key elsewhere. These rules apply to Claude's file
+   tools. A shell command can reach the same files in many ways, so treat the rules as a speed
+   bump, not a wall, unless you also use the sandbox below.
+2. **No auto-approve or bypass permission modes while writes are on.** Every prompt you skip is
+   a place where an injected instruction could run a command without you seeing it.
+3. **Never answer elicitation forms automatically.** Do not write a hook (or any script) that
+   accepts these confirmation forms for you. A form that answers itself is no confirmation.
+4. **For strong isolation, take the key out of the agent's reach:** run the server as a
+   separate OS user (the key and the state folder belong to that user, mode 600/700, and the agent's user
+   cannot read them), or run the agent in a sandbox (for example Claude Code's sandbox, a
+   container or a VM) that has no access to those folders.
+
+## What else is not protected
+
 - A key with a powerful role can do powerful things; use the smallest role that works.
-- The server trusts Apple's API and the Python packages it depends on. The monthly report checks
-  those packages for known vulnerabilities and newer releases.
+- The server trusts Apple's API and the Python packages it depends on. These are pinned exactly
+  in `pyproject.toml` and `uv.lock`; the monthly report checks them for known vulnerabilities and
+  newer releases, and CI audits them.
+- Text from the API is wrapped in random per-call markers so the model treats it as data. This
+  lowers the risk of prompt injection; it cannot remove it. Confirmation forms are the real
+  barrier, and they only help if you read them.
+- Which code runs is your choice: a pinned release tag runs only what you chose, while
+  `@main --refresh` runs whatever is on `main` at each start (see the README).

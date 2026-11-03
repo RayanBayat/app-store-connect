@@ -34,11 +34,29 @@ The server refuses to start if the key file or its folder can be read by other u
 
 ## 2. Install
 
-One command (replace the three values):
+This server holds a key that can change your App Store listing, so which code you run matters.
+Pick one of the two forms below. Replace the three values in `<...>`.
+
+**Recommended for most people: a pinned release.** You run exactly the version you chose. Nothing
+changes until you change the tag yourself.
+
+```
+claude mcp add app-store-connect --scope user -e ASC_KEY_ID=<key id> -e ASC_ISSUER_ID=<issuer id> -e ASC_PRIVATE_KEY_PATH=<path to AuthKey_XXXXXXXXXX.p8> -- uvx --quiet --from git+https://github.com/RayanBayat/app-store-connect@v0.2.0 app-store-connect
+```
+
+**Always latest (the maintainer's own setup).** Every start fetches whatever is on the `main`
+branch right now:
 
 ```
 claude mcp add app-store-connect --scope user -e ASC_KEY_ID=<key id> -e ASC_ISSUER_ID=<issuer id> -e ASC_PRIVATE_KEY_PATH=<path to AuthKey_XXXXXXXXXX.p8> -- uvx --refresh --quiet --from git+https://github.com/RayanBayat/app-store-connect@main app-store-connect
 ```
+
+The trade-off, in plain words: with `@main --refresh` you get fixes at once, but you also run
+new code the moment it is pushed, before anyone but the author has looked at it, and a mistake
+or a compromised account on the repository would reach your key on the next start. With a
+pinned tag you only run code you chose to run, and you pay for that by updating by hand.
+Both forms pin the Python libraries exactly (see `uv.lock`); the choice is only about this
+repository's own code.
 
 To let Claude make changes, add `-e ASC_ALLOW_WRITES=1`. Claude then shows you a form that says
 exactly what will change, and nothing happens unless you accept it. Public actions (submitting for
@@ -46,6 +64,22 @@ review, replying to a review) are labelled **PUBLIC AND IRREVERSIBLE** in that f
 
 To let Claude upload screenshots, add `-e ASC_ROOT=<folder with your screenshots>`. Claude can
 only read files inside that folder.
+
+### Read this before you turn writes on
+
+The protections in this project (confirmation forms, the monthly review, the key checks) assume
+**the AI agent cannot run arbitrary commands as your user**. That is not the default in Claude
+Code. An agent that can run shell commands or write files as you could read the `.p8` key, edit
+`review.json`, fake a terminal to pass the terminal check, or edit the MCP configuration to turn
+writes on. Before you set `ASC_ALLOW_WRITES`, read
+[docs/security.md](docs/security.md#what-this-does-not-protect-against-and-what-to-do-about-it)
+and do at least these:
+
+- Add Claude Code permission deny rules for the key folder and the state folder (exact rules in
+  that document).
+- Do not use auto-approve or bypass-permissions modes while writes are on.
+- Never answer these confirmation forms automatically with a hook.
+- For strong isolation, run the server as a separate OS user or inside a sandbox.
 
 ### All settings
 
@@ -102,21 +136,26 @@ If your client cannot show forms, run the review in a terminal instead (see belo
 
 ## Updating
 
-Automatic. The install command uses `uvx --refresh`, so every start fetches the latest version
-from GitHub.
+- **Pinned install:** change the tag in the command, for example `@v0.2.0` to `@v0.3.0`, and run
+  it again (`claude mcp remove app-store-connect --scope user`, then the install command with
+  the new tag). Read [CHANGELOG.md](CHANGELOG.md) first.
+- **`@main --refresh` install:** automatic. Every start fetches the latest `main`.
+
+The monthly review records which version (and git commit) you reviewed. If the running code is
+not the reviewed code, the report and `maintenance_status` say so.
 
 ## Terminal commands
 
 ```
-uvx --from git+https://github.com/RayanBayat/app-store-connect@main app-store-connect status
-uvx --from git+https://github.com/RayanBayat/app-store-connect@main app-store-connect review
-uvx --from git+https://github.com/RayanBayat/app-store-connect@main app-store-connect doctor
+uvx --from git+https://github.com/RayanBayat/app-store-connect@v0.2.0 app-store-connect status
+uvx --from git+https://github.com/RayanBayat/app-store-connect@v0.2.0 app-store-connect review
+uvx --from git+https://github.com/RayanBayat/app-store-connect@v0.2.0 app-store-connect doctor
 ```
 
 `doctor` reads the same `ASC_*` variables, so run it like this:
 
 ```
-ASC_KEY_ID=<key id> ASC_ISSUER_ID=<issuer id> ASC_PRIVATE_KEY_PATH=<path> uvx --from git+https://github.com/RayanBayat/app-store-connect@main app-store-connect doctor --online
+ASC_KEY_ID=<key id> ASC_ISSUER_ID=<issuer id> ASC_PRIVATE_KEY_PATH=<path> uvx --from git+https://github.com/RayanBayat/app-store-connect@v0.2.0 app-store-connect doctor --online
 ```
 
 `--online` makes one read-only call to Apple to prove the credentials work.

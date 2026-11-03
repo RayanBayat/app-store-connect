@@ -57,3 +57,31 @@ def test_dependabot_waits_7_days_for_both_ecosystems() -> None:
     assert text.count("cooldown:") == 2
     assert text.count("default-days: 7") == 2
     assert "github-actions" in text and "package-ecosystem: uv" in text
+
+
+def test_readme_recommends_the_pinned_form_without_refresh() -> None:
+    readme = read("README.md")
+    pinned = [ln for ln in readme.splitlines() if "claude mcp add" in ln and "@v0.2.0" in ln]
+    assert len(pinned) == 1 and "--refresh" not in pinned[0]
+    latest = [ln for ln in readme.splitlines() if "claude mcp add" in ln and "@main" in ln]
+    assert len(latest) == 1 and "--refresh" in latest[0]
+    assert "Always latest (the maintainer's own setup)" in readme
+    assert "change the tag" in readme.lower()
+
+
+def test_docs_say_the_protections_assume_the_agent_cannot_run_commands() -> None:
+    for name in ("README.md", "docs/security.md"):
+        text = read(name)
+        assert "cannot run arbitrary commands as your" in text, name
+    security = " ".join(read("docs/security.md").split())
+    for needle in ("Read(~/.config/app-store-connect/**)", "Edit(~/.local/state/app-store-connect/**)",
+                   "bypass", "hook", "separate OS user", "sandbox"):  # fmt: skip
+        assert needle in security, needle
+
+
+def test_maintenance_guide_covers_releases_pins_and_dependabot() -> None:
+    text = read("MAINTENANCE.md")
+    for needle in ("Cutting a release", "uv lock", "vX", "pinned **exactly**", "Dependabot"):
+        if needle != "vX":
+            assert needle in text, needle
+    assert "git tag v" in text and "gh release create" in text
