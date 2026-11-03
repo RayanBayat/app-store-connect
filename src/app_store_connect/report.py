@@ -22,6 +22,7 @@ from typing import Any, Final
 import httpx
 
 from app_store_connect import osv
+from app_store_connect.httpio import DownloadError, fetch_limited
 from app_store_connect.review import Review
 from app_store_connect.spec import (
     APPLE_API_SPEC_VERSION,
@@ -34,6 +35,9 @@ from app_store_connect.tools import apps, beta, builds, localizations, reviews, 
 
 MAX_SPEC_ZIP_BYTES: Final = 30 * 1024 * 1024
 MAX_SPEC_JSON_BYTES: Final = 60 * 1024 * 1024
+MAX_PYPI_BYTES: Final = 5 * 1024 * 1024
+# Apple's spec URL needs no redirect today; if it ever does, only Apple's own site is allowed.
+SPEC_REDIRECT_HOSTS: Final = ("developer.apple.com",)
 SPEC_MEMBER: Final = "openapi.oas.json"
 PYPI_URL: Final = "https://pypi.org/pypi/{name}/json"
 OWN_PACKAGE: Final = "app-store-connect"
@@ -82,20 +86,11 @@ class ReportInputs:
 
 
 def read_limited(client: httpx.Client, url: str, limit: int) -> bytes:
-    """GET `url` and return the body, refusing anything larger than `limit` bytes."""
+    """GET Apple's spec: size-capped, and redirects only to developer.apple.com hosts."""
     try:
-        with client.stream("GET", url) as response:
-            response.raise_for_status()
-            chunks: list[bytes] = []
-            total = 0
-            for chunk in response.iter_bytes():
-                total += len(chunk)
-                if total > limit:
-                    raise ReportError(f"{url} is larger than {limit} bytes; refusing it.")
-                chunks.append(chunk)
-    except httpx.HTTPError as exc:
-        raise ReportError(f"Could not download {url}: {exc}") from exc
-    return b"".join(chunks)
+        return fetch_limited(client, "GET", url, limit=limit, redirect_hosts=SPEC_REDIRECT_HOSTS)
+    except DownloadError as exc:
+        raise ReportError(str(exc)) from exc
 
 
 def parse_spec(spec: dict[str, Any]) -> SpecInfo:
@@ -221,10 +216,9 @@ def is_outdated(installed: str, latest: str) -> bool:
 def latest_on_pypi(client: httpx.Client, name: str) -> str:
     """Return the newest release version of `name` on PyPI."""
     try:
-        response = client.get(PYPI_URL.format(name=name))
-        response.raise_for_status()
-        return str(response.json()["info"]["version"])
-    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        raw = fetch_limited(client, "GET", PYPI_URL.format(name=name), limit=MAX_PYPI_BYTES)
+        return str(json.loads(raw)["info"]["version"])
+    except (DownloadError, ValueError, KeyError, TypeError) as exc:
         raise ReportError(f"PyPI lookup for {name} failed: {exc}") from exc
 
 

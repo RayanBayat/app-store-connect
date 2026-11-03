@@ -6,11 +6,13 @@ mocked transport and never touch the network.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, Final
 
 import httpx
 
+from app_store_connect.httpio import DownloadError, fetch_limited
 from app_store_connect.textsafe import untrusted
 
 OSV_BATCH_URL: Final = "https://api.osv.dev/v1/querybatch"
@@ -19,6 +21,9 @@ ECOSYSTEM: Final = "PyPI"
 TIMEOUT_SECONDS: Final = 20.0
 # OSV documents a cap on batch size; chunking keeps every request small.
 BATCH_SIZE: Final = 500
+MAX_OSV_BYTES: Final = 5 * 1024 * 1024
+# A package with more result pages than this is not plausible; stop instead of looping forever.
+MAX_PAGES_PER_QUERY: Final = 20
 
 Query = tuple[str, str]  # (package name, version)
 
@@ -40,7 +45,7 @@ class Vulnerability:
 
 def new_client() -> httpx.Client:
     """Return an HTTP client with a sane timeout and redirect handling."""
-    return httpx.Client(timeout=TIMEOUT_SECONDS, follow_redirects=True)
+    return httpx.Client(timeout=TIMEOUT_SECONDS, follow_redirects=False)
 
 
 def _request_json(
@@ -48,10 +53,8 @@ def _request_json(
 ) -> dict[str, Any]:
     """Send one request and return the JSON object, wrapping every failure in OsvError."""
     try:
-        response = client.request(method, url, json=payload)
-        response.raise_for_status()
-        data = response.json()
-    except (httpx.HTTPError, ValueError) as exc:
+        data = json.loads(fetch_limited(client, method, url, limit=MAX_OSV_BYTES, payload=payload))
+    except (DownloadError, ValueError) as exc:
         raise OsvError(f"OSV request to {url} failed: {exc}") from exc
     if not isinstance(data, dict):
         raise OsvError(f"OSV answered {url} with something that is not a JSON object")
@@ -70,6 +73,7 @@ def query_vuln_ids(client: httpx.Client, queries: list[Query]) -> dict[Query, se
     """Return vulnerability ids per query, following `next_page_token` pagination."""
     found: dict[Query, set[str]] = {q: set() for q in queries}
     pending: list[tuple[Query, str | None]] = [(q, None) for q in queries]
+    pages: dict[Query, int] = dict.fromkeys(queries, 0)
     while pending:
         chunk, pending = pending[:BATCH_SIZE], pending[BATCH_SIZE:]
         body = {"queries": [make_query(n, v, tok) for (n, v), tok in chunk]}
@@ -79,6 +83,9 @@ def query_vuln_ids(client: httpx.Client, queries: list[Query]) -> dict[Query, se
         for (query, _), result in zip(chunk, results, strict=True):
             found[query].update(v["id"] for v in result.get("vulns", []))
             if token := result.get("next_page_token"):
+                pages[query] += 1
+                if pages[query] > MAX_PAGES_PER_QUERY:
+                    raise OsvError(f"OSV returned too many pages for {query[0]}; giving up.")
                 pending.append((query, token))
     return found
 

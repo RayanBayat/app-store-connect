@@ -109,9 +109,14 @@ def text_result(text: str, *, is_error: bool = False) -> types.CallToolResult:
     return types.CallToolResult(content=[types.TextContent(text=text)], is_error=is_error)
 
 
+def new_report_client() -> httpx.Client:
+    """The HTTP client for the report. It never follows redirects by itself."""
+    return httpx.Client(timeout=HTTP_TIMEOUT, follow_redirects=False)
+
+
 def make_report(current_tools: list[str]) -> str:
     """Build the real report (network access). Run it in a worker thread."""
-    with httpx.Client(timeout=HTTP_TIMEOUT, follow_redirects=True) as client:
+    with new_report_client() as client:
         inputs = ReportInputs(
             client=client,
             now=now_local(),
