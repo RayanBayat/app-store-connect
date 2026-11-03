@@ -30,6 +30,8 @@ A short guide for contributors: how the server works, where the code lives, and 
 - **MCP protocol `2026-07-28`** (what current Claude Code uses): a server can't send a form in the middle of a tool call. The tool call returns `InputRequiredResult` with the form and a sealed `request_state`. The client shows the form and calls the tool again with the answer.
 - **Older versions:** the server sends the form during the call (`elicit_form`).
 
+The forms have **no input fields**: the text shows the change, and the human pressing Accept is the approval. A required checkbox turned out to be impossible to tick in Claude Code's form, so it was removed.
+
 The sealed state is encrypted, tied to the exact tool, arguments and form text, single-use, and expires after 10 minutes. On the retry everything is re-read from Apple. If anything changed, the user gets a fresh form instead of a write. Both paths are tested in `tests/test_confirm_eras.py`.
 
 ## Facts about Apple that shape the code

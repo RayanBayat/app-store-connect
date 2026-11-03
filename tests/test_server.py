@@ -101,9 +101,6 @@ async def test_confirm_review_stamps_only_on_accept_with_read_true(tmp_path: Pat
     [
         types.ElicitResult(action="decline"),
         types.ElicitResult(action="cancel"),
-        types.ElicitResult(action="accept", content={"read": False}),
-        types.ElicitResult(action="accept", content={}),
-        types.ElicitResult(action="accept", content={"read": "yes"}),
     ],
 )
 async def test_confirm_review_does_not_stamp_otherwise(

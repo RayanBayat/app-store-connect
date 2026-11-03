@@ -4,6 +4,9 @@
 
 Security fixes from an independent review.
 
+- Confirmation forms no longer ask you to tick a box: they show exactly what will happen, and
+  pressing **Accept** is your approval. Claude Code's forms could not tick the required box, so
+  every confirmation was blocked.
 - Docs: the README now leads with what you can do and why it is safe, with a 3-step start;
   `docs/design.md` explains how it works for contributors.
 

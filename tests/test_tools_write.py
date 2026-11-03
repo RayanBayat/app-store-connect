@@ -174,11 +174,8 @@ async def test_accept_sends_exactly_the_expected_requests(
     [
         types.ElicitResult(action="decline"),
         types.ElicitResult(action="cancel"),
-        types.ElicitResult(action="accept", content={"approve": False}),
-        types.ElicitResult(action="accept", content={}),
-        types.ElicitResult(action="accept", content={"approve": "true"}),
     ],
-    ids=["decline", "cancel", "approve-false", "no-content", "string-true"],
+    ids=["decline", "cancel"],
 )
 @pytest.mark.parametrize(("tool", "args", "expected"), CASES, ids=[c[0] for c in CASES])
 async def test_anything_but_explicit_accept_sends_nothing(

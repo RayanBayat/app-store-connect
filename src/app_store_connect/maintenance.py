@@ -57,13 +57,9 @@ MAX_SUMMARY_CHARS: Final = 500
 TERMINAL_COMMAND: Final = (
     "uvx --from git+https://github.com/RayanBayat/app-store-connect@main app-store-connect review"
 )
-CONFIRM_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "read": {"type": "boolean", "title": "I have read the maintenance report"},
-    },
-    "required": ["read"],
-}
+# No input fields: the human's own Accept button confirms they read the report (see
+# tools/confirm.py for why there is no checkbox).
+CONFIRM_SCHEMA: Final[dict[str, Any]] = {"type": "object", "properties": {}}
 HTTP_TIMEOUT: Final = httpx.Timeout(30.0, connect=10.0)
 
 _EMPTY_INPUT: Final[dict[str, Any]] = {"type": "object", "properties": {}}

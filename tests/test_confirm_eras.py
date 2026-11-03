@@ -50,12 +50,18 @@ class Answers:
     ) -> None:
         self.action, self.field, self.value = action, field, value
         self.forms: list[str] = []
+        self.schemas: list[dict[str, Any]] = []
         self.on_form: Callable[[int], None] | None = None
 
     async def __call__(
         self, context: ClientRequestContext, params: types.ElicitRequestParams
     ) -> types.ElicitResult:
         self.forms.append(params.message)
+        schema = getattr(params, "requested_schema", None)
+        if schema is not None:
+            self.schemas.append(
+                schema if isinstance(schema, dict) else schema.model_dump(exclude_none=True)
+            )
         if self.on_form is not None:
             self.on_form(len(self.forms))
         if self.action != "accept":
@@ -107,12 +113,15 @@ async def test_decline_and_cancel_send_nothing_and_say_why(
 
 
 @pytest.mark.parametrize("mode", ERAS)
-async def test_unticked_approval_box_sends_nothing(tmp_path: Path, mode: str) -> None:
+async def test_forms_have_no_input_fields(tmp_path: Path, mode: str) -> None:
+    """Claude Code could not tick a required checkbox, so the forms ask nothing: Accept approves."""
     fake = loc_fake()
-    answers = Answers(value=False)
+    answers = Answers()
     async with connected(tmp_path, fake, allow_writes=True, elicit=answers, mode=mode) as c:
-        result = await c.call_tool(TOOL, ARGS)
-    assert result.is_error and fake.writes() == []
+        await c.call_tool(TOOL, ARGS)
+    assert answers.schemas, "no form was shown"
+    assert all(schema.get("properties") == {} for schema in answers.schemas)
+    assert all("required" not in schema for schema in answers.schemas)
 
 
 @pytest.mark.parametrize("mode", ERAS)
@@ -242,13 +251,11 @@ async def test_state_from_another_tool_call_is_refused(tmp_path: Path) -> None:
     "responses",
     [
         {"wrong-key": types.ElicitResult(action="accept", content={"approve": True})},
-        {"confirm": types.ElicitResult(action="accept", content={"approve": False})},
-        {"confirm": types.ElicitResult(action="accept", content={})},
         {"confirm": types.ElicitResult(action="decline")},
         {"confirm": types.ElicitResult(action="cancel")},
         None,
     ],
-    ids=["wrong-key", "approve-false", "no-content", "decline", "cancel", "missing"],
+    ids=["wrong-key", "decline", "cancel", "missing"],
 )
 async def test_bad_or_missing_answers_send_nothing(
     tmp_path: Path, responses: types.InputResponses | None

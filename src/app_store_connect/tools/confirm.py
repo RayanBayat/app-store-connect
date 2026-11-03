@@ -2,8 +2,8 @@
 
 The model cannot confirm for itself: there is no "confirm" argument anywhere. We show the
 human's own client a form that states exactly what will change, and only an explicit
-"accept" with the approval box ticked lets the write proceed. Anything else (decline,
-cancel, a client without form support) means nothing is sent to Apple.
+"accept" from the human lets the write proceed. Anything else (decline, cancel, a client
+without form support) means nothing is sent to Apple.
 """
 
 from __future__ import annotations
@@ -14,11 +14,10 @@ from app_store_connect.confirmflow import ConfirmationRefusedError, ask_human
 from app_store_connect.textsafe import escape_display
 from app_store_connect.tools.base import ToolContext, ToolRefusedError
 
-APPROVE_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {"approve": {"type": "boolean", "title": "Yes, make this change"}},
-    "required": ["approve"],
-}
+# No input fields: the form shows the change, and the human's own Accept button is the
+# approval. (A required checkbox could not be ticked in Claude Code's form, which blocked
+# every confirmation.) The model cannot press Accept: only the human's client can.
+APPROVE_SCHEMA: Final[dict[str, Any]] = {"type": "object", "properties": {}}
 
 
 def show_value(value: object) -> str:

@@ -33,7 +33,8 @@ This server holds a key that can change a real App Store listing, so the design 
      exact form you saw. On the retry the server rebuilds the change from the current arguments
      and the current data at Apple; if anything differs from what you saw (for example the old
      value changed meanwhile) it shows you a fresh form instead of acting. Only an explicit
-     accept with the approval box ticked proceeds; a decline, cancel, missing or wrong answer, a
+     press of Accept in your own client proceeds (the form has no fields to fill in); a decline,
+     cancel, missing or wrong answer, a
      tampered, expired or replayed state all send nothing.
 3. **No arbitrary requests.** The HTTP client refuses any (method, path) that is not in
    `ENDPOINTS_USED`. A test checks that this list matches the code.

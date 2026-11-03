@@ -15,7 +15,7 @@ per-process key, binds it to the tool name and exact arguments, and expires it a
 minutes. On top of that this module puts a single-use nonce and a digest of the exact change
 the human saw. On the retry the caller rebuilds the change from the current arguments and the
 current Apple data; if it differs from what the human was shown, a fresh form is returned
-instead of acting. Only an explicit accept with the approval box ticked lets anything proceed.
+instead of acting. Only the human pressing Accept in their own client lets anything proceed.
 """
 
 from __future__ import annotations
@@ -108,19 +108,20 @@ def form_support_problem(session: ServerSession) -> str | None:
     return None
 
 
-def _outcome(result: types.ElicitResult, approve_field: str) -> None:
-    """Return only for an explicit accept with the approval box ticked."""
+def _outcome(result: types.ElicitResult) -> None:
+    """Return only when the human explicitly pressed Accept in their own client.
+
+    The forms have no input fields, so Accept itself is the approval.
+    """
     if result.action == "decline":
         raise ConfirmationRefusedError("the user declined")
     if result.action == "cancel":
         raise ConfirmationRefusedError("the user cancelled")
-    if (result.content or {}).get(approve_field) is not True:
-        raise ConfirmationRefusedError("the form was accepted without ticking the approval box")
+    if result.action != "accept":
+        raise ConfirmationRefusedError(f"unexpected form answer {result.action!r}")
 
 
-async def _ask_back_channel(
-    session: ServerSession, message: str, schema: dict[str, Any], approve_field: str
-) -> None:
+async def _ask_back_channel(session: ServerSession, message: str, schema: dict[str, Any]) -> None:
     """Older protocol versions: send the form to the client in the middle of the call."""
     try:
         result = await session.elicit_form(message, schema)
@@ -134,7 +135,7 @@ async def _ask_back_channel(
         raise ConfirmationRefusedError(
             "this client cannot show confirmation forms (MCP elicitation)"
         ) from exc
-    _outcome(result, approve_field)
+    _outcome(result)
 
 
 def _first_round(
@@ -163,7 +164,6 @@ async def _ask_input_required(
     message: str,
     schema: dict[str, Any],
     digest: str,
-    approve_field: str,
     input_responses: Mapping[str, Any] | None,
     request_state: str | None,
 ) -> None:
@@ -177,7 +177,7 @@ async def _ask_input_required(
     answer = (input_responses or {}).get(INPUT_KEY)
     if not isinstance(answer, types.ElicitResult):
         raise ConfirmationRefusedError("the answer to the form is missing or malformed")
-    _outcome(answer, approve_field)
+    _outcome(answer)
     if seen_digest != digest:
         # The human approved something else (for example the old value changed meanwhile).
         logger.warning("confirmation does not match the current change; asking again")
@@ -207,11 +207,9 @@ async def ask_human(
             raise ConfirmationRefusedError(problem)
         if is_version_at_least(session.protocol_version, INPUT_REQUIRED_VERSION):
             digest = change_digest(tool_name, arguments, message, approve_field)
-            await _ask_input_required(
-                book, message, schema, digest, approve_field, input_responses, request_state
-            )
+            await _ask_input_required(book, message, schema, digest, input_responses, request_state)
         else:
-            await _ask_back_channel(session, message, schema, approve_field)
+            await _ask_back_channel(session, message, schema)
     except ConfirmationRefusedError as exc:
         logger.warning("no confirmation for %s: %s", tool_name, exc)
         raise
