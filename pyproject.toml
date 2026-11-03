@@ -9,7 +9,7 @@ requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.28.1",
     "mcp>=2.3.0",
-    "sigstore>=4.5.1",
+    "pyjwt[crypto]>=2.15.1",
 ]
 
 [project.scripts]

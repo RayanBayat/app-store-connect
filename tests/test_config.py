@@ -42,7 +42,6 @@ def test_load_config_minimal_uses_safe_defaults(env: dict[str, str]) -> None:
     assert config.allow_writes is False
     assert config.review_max_days == 30
     assert config.root is None
-    assert config.upstream_version is None
 
 
 def test_load_config_reads_optional_values(env: dict[str, str], tmp_path: Path) -> None:
@@ -52,7 +51,6 @@ def test_load_config_reads_optional_values(env: dict[str, str], tmp_path: Path) 
         ASC_ALLOW_WRITES="YES",
         ASC_ROOT=str(tmp_path),
         ASC_REVIEW_MAX_DAYS="7",
-        ASC_UPSTREAM_VERSION="0.23.0",
     )
     config = load_config(env)
     assert config == Config(
@@ -64,7 +62,6 @@ def test_load_config_reads_optional_values(env: dict[str, str], tmp_path: Path) 
         allow_writes=True,
         root=tmp_path,
         review_max_days=7,
-        upstream_version="0.23.0",
     )
 
 

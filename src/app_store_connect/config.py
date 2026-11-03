@@ -41,7 +41,6 @@ class Config:
     allow_writes: bool = False
     root: Path | None = None
     review_max_days: int = DEFAULT_REVIEW_DAYS
-    upstream_version: str | None = None
 
     @property
     def masked_key_id(self) -> str:
@@ -137,7 +136,6 @@ def load_config(env: Mapping[str, str]) -> Config:
         allow_writes=is_truthy(env.get("ASC_ALLOW_WRITES")),
         root=root,
         review_max_days=parse_review_days(env.get("ASC_REVIEW_MAX_DAYS")),
-        upstream_version=env.get("ASC_UPSTREAM_VERSION", "").strip() or None,
     )
 
 
