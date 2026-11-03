@@ -1,15 +1,18 @@
 [project]
 name = "app-store-connect"
-version = "0.1.0"
+version = "0.2.0"
 description = "App Store Connect in Claude, safely: an MCP server for Apple's App Store Connect API."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
+# Pinned EXACTLY (==) so a new upstream release cannot reach users until the maintainer has
+# reviewed it and cut a release (see MAINTENANCE.md). Dependabot opens PRs to move the pins.
 dependencies = [
-    "httpx>=0.28.1",
-    "mcp>=2.3.0",
-    "pyjwt[crypto]>=2.15.1",
+    "cryptography==50.0.2",
+    "httpx==0.28.1",
+    "mcp==2.3.0",
+    "pyjwt[crypto]==2.15.1",
 ]
 
 [project.scripts]
