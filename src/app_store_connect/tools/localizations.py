@@ -23,10 +23,11 @@ from app_store_connect.tools.locales import valid_locale
 VERSION_TEXT_FIELDS: Final = (
     "description", "keywords", "whatsNew", "promotionalText", "marketingUrl", "supportUrl",
 )  # fmt: skip
-# Longest allowed value per field, in characters. Apple's OpenAPI spec has no maxLength, so
-# these are the limits Apple documents in App Store Connect Help ("Platform version
-# information"); the URL limit is our own conservative cap (Apple documents none). A value
-# over the limit is refused before anything is read or shown: Apple would reject it anyway.
+# Longest allowed value per field. Apple's OpenAPI spec has no maxLength, so these are the
+# limits Apple documents in App Store Connect Help ("Platform version information" and
+# "App information", checked 2026-11-03); the URL limit is our own conservative cap (Apple
+# documents none). Characters, except fields in BYTE_LIMITED_FIELDS. A value over the limit
+# is refused before anything is read or shown: Apple would reject it anyway.
 FIELD_LIMITS: Final = {
     "description": 4000,
     "keywords": 100,
@@ -38,6 +39,10 @@ FIELD_LIMITS: Final = {
     "subtitle": 30,
     "privacyPolicyUrl": 2048,
 }
+# Apple counts keywords in bytes ("up to 100 bytes"), so å, ä and ö count as 2 each.
+BYTE_LIMITED_FIELDS: Final = frozenset({"keywords"})
+# Shortest allowed value per field (Help: the name "must be at least two characters").
+FIELD_MINIMUMS: Final = {"name": 2}
 VERSION_FIELDS: Final = ("locale", *VERSION_TEXT_FIELDS)
 INFO_TEXT_FIELDS: Final = ("name", "subtitle", "privacyPolicyUrl")
 INFO_FIELDS: Final = ("locale", *INFO_TEXT_FIELDS)
@@ -73,11 +78,16 @@ async def get_app_info_localizations(ctx: ToolContext, args: dict[str, Any]) -> 
 
 
 def check_limit(name: str, value: str) -> None:
-    """Refuse a value longer than Apple allows for `name`."""
-    if len(value) > FIELD_LIMITS[name]:
-        raise ToolInputError(
-            f"{name} is {len(value)} characters; Apple allows at most {FIELD_LIMITS[name]}."
-        )
+    """Refuse a value that is longer (or shorter) than Apple allows for `name`."""
+    if name in BYTE_LIMITED_FIELDS:
+        size, unit = len(value.encode("utf-8")), "bytes (letters like å, ä, ö count as 2)"
+    else:
+        size, unit = len(value), "characters"
+    if size > FIELD_LIMITS[name]:
+        raise ToolInputError(f"{name} is {size} {unit}; Apple allows at most {FIELD_LIMITS[name]}.")
+    minimum = FIELD_MINIMUMS.get(name, 0)
+    if len(value) < minimum:
+        raise ToolInputError(f"{name} is {len(value)} characters; Apple needs at least {minimum}.")
 
 
 def requested_changes(args: dict[str, Any], fields: tuple[str, ...]) -> dict[str, str]:

@@ -10,6 +10,8 @@ import pytest
 from mcp.client.session import ClientRequestContext
 
 from app_store_connect.textsafe import escape_display
+from app_store_connect.tools.base import ToolInputError
+from app_store_connect.tools.localizations import check_limit
 
 from .apple_fake import FakeApple, connected, one, resource, text_of
 
@@ -165,3 +167,17 @@ async def test_other_forms_escape_group_and_app_names(tmp_path: Path) -> None:
     assert "\u202e" not in forms[0]
     assert "G\u23ceEVIL\\u202e" in forms[0]
     assert "A\u23ceB" in forms[0]
+
+
+def test_keywords_are_limited_in_bytes_not_characters() -> None:
+
+    check_limit("keywords", "a" * 100)  # 100 bytes: allowed
+    with pytest.raises(ToolInputError, match="bytes"):
+        check_limit("keywords", "ö" * 51)  # 51 characters but 102 bytes
+
+
+def test_app_name_needs_at_least_two_characters() -> None:
+
+    check_limit("name", "Ab")
+    with pytest.raises(ToolInputError, match="at least 2"):
+        check_limit("name", "A")
