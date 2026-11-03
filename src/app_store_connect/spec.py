@@ -50,9 +50,11 @@ ENDPOINTS_USED: Final[frozenset[Endpoint]] = frozenset(
         ("GET", "/v1/apps/{id}/appPriceSchedule"),
         ("GET", "/v1/appPriceSchedules/{id}/baseTerritory"),
         ("GET", "/v1/appPriceSchedules/{id}/manualPrices"),
+        ("GET", "/v1/appInfos/{id}/ageRatingDeclaration"),
         # --- reads used by write tools to show "old value -> new value" ---
         ("GET", "/v1/appStoreVersionLocalizations/{id}"),
         ("GET", "/v1/appInfoLocalizations/{id}"),
+        ("GET", "/v1/appInfos/{id}"),
         ("GET", "/v1/appStoreVersions/{id}/relationships/build"),
         ("GET", "/v1/customerReviews/{id}"),
         ("GET", "/v1/betaGroups/{id}"),
@@ -81,6 +83,7 @@ ENDPOINTS_USED: Final[frozenset[Endpoint]] = frozenset(
         ("PATCH", "/v1/territoryAvailabilities/{id}"),
         ("POST", "/v2/appAvailabilities"),
         ("POST", "/v1/appPriceSchedules"),
+        ("PATCH", "/v1/ageRatingDeclarations/{id}"),
     }
 )
 

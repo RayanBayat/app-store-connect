@@ -16,13 +16,13 @@ A short guide for contributors: how the server works, where the code lives, and 
 - **Read (always on):** `list_apps`, `get_app`, `list_app_store_versions`, `get_version_status`,
   `list_builds`, `get_build`, `list_beta_groups`, `list_beta_testers`,
   `get_version_localizations`, `get_app_info_localizations`, `list_screenshot_sets`,
-  `list_customer_reviews`, `get_review_submissions`, `get_app_availability`.
+  `list_customer_reviews`, `get_review_submissions`, `get_app_availability`, `get_age_rating`.
 - **Change (only with `ASC_ALLOW_WRITES`, each asks the human):** `update_version_localization`,
   `update_app_info_localization`, `create_version_localization`, `create_app_info_localization`,
   `update_app_primary_locale`, `create_app_store_version`, `select_build_for_version`,
   `add_beta_tester`, `remove_beta_tester`, `add_build_to_beta_group`,
   `submit_build_for_beta_review`, `submit_for_app_review`, `reply_to_customer_review`,
-  `upload_screenshot`, `set_territory_availability`, `set_free_price`.
+  `upload_screenshot`, `set_territory_availability`, `set_free_price`, `update_age_rating`.
 - **Maintenance:** `maintenance_status`, `maintenance_report`, `maintenance_confirm_review`.
 
 ## Asking the human: two protocol versions
@@ -50,6 +50,10 @@ An app can be "Ready for Sale" and still be missing from a country's App Store. 
 - **Price** (`tools/pricing.py`): an app with no price schedule has no price. The schedule has a base territory and a manual price there; Apple derives the other countries from it.
 
 Changing it: `set_territory_availability` patches each territory (`PATCH /v1/territoryAvailabilities/{id}`, attribute `available`). If the app has no availability yet there is nothing to patch, so it uses the create call (`POST /v2/appAvailabilities`) and only to switch territories on. Territory codes are checked against what Apple returns before any form is shown. `set_free_price` posts a price schedule whose base price is the price point with customer price 0 (`POST /v1/appPriceSchedules`), and refuses to replace an existing paid price.
+
+## Age rating
+
+Apple will not accept an update until every age-rating question is answered. `tools/agerating.py` holds the question list with plain-English labels (yes/no questions, frequency questions, and a few optional choices). `get_age_rating` reads `GET /v1/appInfos/{id}/ageRatingDeclaration` for each app info and lists the unanswered ones. `update_age_rating` checks every name and value against the spec before anything else, refuses app infos that are not in `PREPARE_FOR_SUBMISSION`, `DEVELOPER_REJECTED` or `REJECTED`, shows each change as old -> new, and sends one `PATCH /v1/ageRatingDeclarations/{id}` with only the changed answers. The form says the answers are the developer's legal declaration. `all_others: "none"` fills every yes/no question not listed with false and every frequency question not listed with NONE. The deprecated `ageRatingOverride` is refused (use `ageRatingOverrideV2`).
 
 ## The monthly report
 

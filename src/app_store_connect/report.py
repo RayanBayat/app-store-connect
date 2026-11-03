@@ -32,7 +32,15 @@ from app_store_connect.spec import (
     SPEC_URL,
     Endpoint,
 )
-from app_store_connect.tools import apps, beta, builds, localizations, reviews, versions
+from app_store_connect.tools import (
+    agerating,
+    apps,
+    beta,
+    builds,
+    localizations,
+    reviews,
+    versions,
+)
 
 MAX_SPEC_ZIP_BYTES: Final = 30 * 1024 * 1024
 MAX_SPEC_JSON_BYTES: Final = 60 * 1024 * 1024
@@ -61,6 +69,8 @@ USED_ATTRIBUTES: Final[dict[str, tuple[str, ...]]] = {
     "Territory": ("currency",),
     "AppPricePointV3": ("customerPrice",),
     "AppPriceV2": ("startDate", "endDate"),
+    "AppInfo": ("state",),
+    "AgeRatingDeclaration": agerating.DECLARATION_FIELDS,
 }
 
 

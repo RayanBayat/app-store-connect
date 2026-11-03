@@ -2,6 +2,13 @@
 
 ## 0.3.0 (unreleased)
 
+- New `get_age_rating` and `update_age_rating`: see and answer Apple's age rating questionnaire,
+  which must be fully answered before an update can be submitted (Apple otherwise refuses with
+  "You must provide a value for the attribute 'socialMedia'"). The read tool lists every
+  unanswered question. The change tool only exists with `ASC_ALLOW_WRITES`, only works on an
+  editable app info, shows each answer as old -> new, says that the answers are your legal
+  declaration, and waits for your Accept. `all_others: "none"` answers "No / None" to every
+  question you did not list.
 - When Apple refuses a request, the error now includes Apple's detailed list of problems
   (for example a missing copyright), not just the headline.
 - `submit_for_app_review` reuses an open, empty draft submission left by an earlier failed attempt

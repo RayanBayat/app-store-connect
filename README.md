@@ -46,8 +46,8 @@ The confirmation forms stop Claude from making changes on its own. They don't pr
 
 | | |
 |---|---|
-| **Read** (always on) | Apps, App Store versions and their status, builds, TestFlight groups and testers, store texts per language, screenshot sets, customer reviews, review submissions, availability per country (with Apple's reasons when it isn't available) and price |
-| **Change** (with `ASC_ALLOW_WRITES`, each confirmed) | Edit store texts, add a language, change the primary language, create a version, pick its build, add or remove TestFlight testers, add a build to a group, submit for beta review, submit for App Review, reply to a customer review, upload screenshots, turn an app on or off in chosen countries, make a free app free in all countries |
+| **Read** (always on) | Apps, App Store versions and their status, builds, TestFlight groups and testers, store texts per language, screenshot sets, customer reviews, review submissions, availability per country (with Apple's reasons when it isn't available), price, and the age rating answers (with unanswered questions listed) |
+| **Change** (with `ASC_ALLOW_WRITES`, each confirmed) | Edit store texts, add a language, change the primary language, create a version, pick its build, add or remove TestFlight testers, add a build to a group, submit for beta review, submit for App Review, reply to a customer review, upload screenshots, turn an app on or off in chosen countries, make a free app free in all countries, answer the age rating questions |
 | **Maintenance** | Status, monthly report, confirm the review |
 
 Text written by people outside your team, such as customer reviews, is marked as untrusted, so Claude won't follow instructions inside it. The full tool names are in [docs/design.md](docs/design.md#tools).
