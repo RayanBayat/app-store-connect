@@ -23,7 +23,8 @@ from app_store_connect.tools.confirm import confirm_change
 from app_store_connect.tools.versions import PLATFORMS, choice
 
 REVIEW_FIELDS: Final = ("rating", "reviewerNickname", "createdDate", "territory")
-MAX_REPLY_CHARS: Final = 4000
+# Apple documents 5970 characters for a developer response (App Store Connect Help).
+MAX_REPLY_CHARS: Final = 5970
 
 
 def review_view(item: dict[str, Any]) -> dict[str, Any]:

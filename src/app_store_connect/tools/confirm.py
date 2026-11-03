@@ -13,11 +13,11 @@ from typing import Any, Final
 
 from mcp.shared.exceptions import MCPError
 
+from app_store_connect.textsafe import escape_display
 from app_store_connect.tools.base import ToolContext, ToolRefusedError
 
 logger = logging.getLogger(__name__)
 
-MAX_VALUE_CHARS: Final = 300
 APPROVE_SCHEMA: Final[dict[str, Any]] = {
     "type": "object",
     "properties": {"approve": {"type": "boolean", "title": "Yes, make this change"}},
@@ -25,21 +25,29 @@ APPROVE_SCHEMA: Final[dict[str, Any]] = {
 }
 
 
-def shorten(value: object) -> str:
-    """Show a value in a form: None as '(empty)', long text cut."""
-    text = "(empty)" if value in (None, "") else str(value)
-    return text if len(text) <= MAX_VALUE_CHARS else text[:MAX_VALUE_CHARS] + "..."
+def show_value(value: object) -> str:
+    """Show a value in a form: None as '(empty)', otherwise the whole text, escaped.
+
+    Never shortened: the human must see exactly what is stored or would be sent.
+    """
+    return "(empty)" if value in (None, "") else escape_display(value)
 
 
 def change_line(label: str, old: object, new: object) -> str:
-    """One 'label: old -> new' line."""
-    return f"{label}: {shorten(old)}  ->  {shorten(new)}"
+    """One 'label: old -> new (N characters)' line; the count is for the new value."""
+    count = "" if new in (None, "") else f" ({len(str(new))} characters)"
+    return f"{label}: {show_value(old)}  ->  {show_value(new)}{count}"
 
 
 def build_message(title: str, lines: list[str], *, public: bool) -> str:
-    """Compose the text of the confirmation form."""
+    """Compose the text of the confirmation form.
+
+    Every line is escaped here as a backstop, so no value that reached a form (from the API
+    or from the model) can add lines or hide text, whichever tool built it.
+    """
     head = ["*** PUBLIC AND IRREVERSIBLE ***"] if public else []
-    return "\n".join([*head, title, "", *lines])
+    safe = [escape_display(line) for line in lines]
+    return "\n".join([*head, escape_display(title), "", *safe])
 
 
 async def confirm_change(

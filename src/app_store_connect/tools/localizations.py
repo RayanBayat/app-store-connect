@@ -19,6 +19,21 @@ from app_store_connect.tools.confirm import change_line, confirm_change
 VERSION_TEXT_FIELDS: Final = (
     "description", "keywords", "whatsNew", "promotionalText", "marketingUrl", "supportUrl",
 )  # fmt: skip
+# Longest allowed value per field, in characters. Apple's OpenAPI spec has no maxLength, so
+# these are the limits Apple documents in App Store Connect Help ("Platform version
+# information"); the URL limit is our own conservative cap (Apple documents none). A value
+# over the limit is refused before anything is read or shown: Apple would reject it anyway.
+FIELD_LIMITS: Final = {
+    "description": 4000,
+    "keywords": 100,
+    "whatsNew": 4000,
+    "promotionalText": 170,
+    "marketingUrl": 2048,
+    "supportUrl": 2048,
+    "name": 30,
+    "subtitle": 30,
+    "privacyPolicyUrl": 2048,
+}
 VERSION_FIELDS: Final = ("locale", *VERSION_TEXT_FIELDS)
 INFO_TEXT_FIELDS: Final = ("name", "subtitle", "privacyPolicyUrl")
 INFO_FIELDS: Final = ("locale", *INFO_TEXT_FIELDS)
@@ -56,6 +71,11 @@ def requested_changes(args: dict[str, Any], fields: tuple[str, ...]) -> dict[str
     changes = {name: value for name in fields if (value := optional_str(args, name)) is not None}
     if not changes:
         raise ToolInputError(f"Give at least one of: {', '.join(fields)}.")
+    for name, value in changes.items():
+        if len(value) > FIELD_LIMITS[name]:
+            raise ToolInputError(
+                f"{name} is {len(value)} characters; Apple allows at most {FIELD_LIMITS[name]}."
+            )
     return changes
 
 
@@ -133,7 +153,10 @@ WRITE_TOOLS = [
         "get_version_localizations to find the localization ID). Asks the user to confirm.",
         {
             "localization_id": string_prop("The version localization's ID."),
-            **{name: string_prop(f"New {name}.") for name in VERSION_TEXT_FIELDS},
+            **{
+                name: string_prop(f"New {name}.", maxLength=FIELD_LIMITS[name])
+                for name in VERSION_TEXT_FIELDS
+            },
         },
         ("localization_id",),
         update_version_localization,
@@ -145,7 +168,10 @@ WRITE_TOOLS = [
         "get_app_info_localizations to find the ID). Asks the user to confirm.",
         {
             "localization_id": string_prop("The app info localization's ID."),
-            **{name: string_prop(f"New {name}.") for name in INFO_TEXT_FIELDS},
+            **{
+                name: string_prop(f"New {name}.", maxLength=FIELD_LIMITS[name])
+                for name in INFO_TEXT_FIELDS
+            },
         },
         ("localization_id",),
         update_app_info_localization,
