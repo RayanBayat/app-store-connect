@@ -65,7 +65,7 @@ def test_readme_recommends_the_pinned_form_without_refresh() -> None:
     assert len(pinned) == 1 and "--refresh" not in pinned[0]
     # The always-latest form is explained (with its trade-off), not offered as the default.
     assert "`@main`" in readme and "`--refresh`" in readme
-    assert "before you've seen it" in readme
+    assert "before you've seen them" in readme
     assert "reinstall with the new tag" in readme.lower()
 
 

@@ -2,6 +2,7 @@
 
 ## 0.3.0 (unreleased)
 
+- Docs: the README is now plain reference documentation (what it does, setup, tools, settings).
 - New `get_app_availability`: see in which countries an app is on sale, and why not. It lists
   every territory with Apple's reasons in plain English, a one-line summary, and the app's
   price (or "no price set"), so you can see why the App Store shows "not found" for a

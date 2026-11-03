@@ -1,66 +1,64 @@
-# App Store Connect for Claude
+# app-store-connect
 
-**Manage your App Store listing, builds and TestFlight by just asking Claude, and approve every change before it happens.**
+An [MCP](https://modelcontextprotocol.io) server for Apple's [App Store Connect API](https://developer.apple.com/documentation/appstoreconnectapi). It lets Claude (or another MCP client) read your apps, builds, TestFlight testers and store listings, and change them if you allow it.
 
-> "Which build is waiting for review?"
-> "Update the Swedish description and keywords for version 1.1."
-> "Add anna@example.com to the External Testers group."
-> "Show me this week's 1-star reviews and draft replies."
+## How it works
 
-`app-store-connect` is an [MCP](https://modelcontextprotocol.io) server that connects Claude to Apple's official [App Store Connect API](https://developer.apple.com/documentation/appstoreconnectapi). It installs with one command.
+- **Read-only by default.** Changes are off until you turn them on. When they're on, each change shows a form with the old and new values, and nothing is sent until you press Accept. Public actions, such as submitting for review or replying to a review, are marked as public in the form.
+- **Talks only to Apple.** Your `.p8` key stays on your computer. The server signs short-lived tokens locally and sends them only to `api.appstoreconnect.apple.com`. There is no Apple ID login and no tool that sends arbitrary requests.
+- **Monthly review.** Every 30 days the tools pause until you have read a short report: Apple API changes, deprecated endpoints, outdated or vulnerable dependencies, and tool changes.
 
-## Why you can trust it with your account
+## Requirements
 
-- **You approve every change.** Reading is on by default; changing things is opt-in. Even then, each change opens a form showing the exact old and new values, and nothing is sent until you accept. Public actions, such as submitting for review or replying to a customer, are clearly marked as public.
-- **Your key never leaves your computer.** The server signs short-lived passes locally and only ever talks to Apple. There is no Apple ID login, and no "send any request" tool.
-- **It keeps itself current.** Once a month it asks you to review a short report: Apple API changes, deprecated endpoints, outdated or vulnerable libraries. A stale integration never runs silently.
-- **Small, open and checked.** Plain Python, MIT-licensed, more than 400 automated tests, and an independent security review.
+- [`uv`](https://docs.astral.sh/uv/getting-started/installation/) and `git`
+- Claude Code (or another MCP client)
+- An App Store Connect account that can create API keys
 
-## Get started in 3 steps
+## Setup
 
-You need [`uv`](https://docs.astral.sh/uv/getting-started/installation/), `git`, Claude Code, and an App Store Connect account that can create API keys.
+1. **Create an API key.** In App Store Connect, go to **Users and Access → Integrations → App Store Connect API → Team Keys → +**, choose the **App Manager** role, then **Download** the `.p8` file. You can only download it once. Note the **Key ID** and the **Issuer ID**.
+2. **Store the key so only you can read it:**
 
-**1. Create an API key.** In App Store Connect, go to **Users and Access → Integrations → App Store Connect API → Team Keys → +**, choose the **App Manager** role, then **Download** the `.p8` file (you can only download it once). Note the **Key ID** and the **Issuer ID**.
+   ```
+   mkdir -p ~/.config/app-store-connect && chmod 700 ~/.config/app-store-connect
+   mv ~/Downloads/AuthKey_XXXXXXXXXX.p8 ~/.config/app-store-connect/ && chmod 600 ~/.config/app-store-connect/AuthKey_XXXXXXXXXX.p8
+   ```
 
-**2. Store the key privately.**
+3. **Add the server.** Replace the three `<...>` values:
 
-```
-mkdir -p ~/.config/app-store-connect && chmod 700 ~/.config/app-store-connect
-mv ~/Downloads/AuthKey_XXXXXXXXXX.p8 ~/.config/app-store-connect/ && chmod 600 ~/.config/app-store-connect/AuthKey_XXXXXXXXXX.p8
-```
+   ```
+   claude mcp add app-store-connect --scope user -e ASC_KEY_ID=<key id> -e ASC_ISSUER_ID=<issuer id> -e ASC_PRIVATE_KEY_PATH=<path to AuthKey_XXXXXXXXXX.p8> -- uvx --quiet --from git+https://github.com/RayanBayat/app-store-connect@v0.2.0 app-store-connect
+   ```
 
-**3. Add it to Claude.** Replace the three `<...>` values:
+Restart Claude Code. On first use, Claude asks you to do the monthly review.
 
-```
-claude mcp add app-store-connect --scope user -e ASC_KEY_ID=<key id> -e ASC_ISSUER_ID=<issuer id> -e ASC_PRIVATE_KEY_PATH=<path to AuthKey_XXXXXXXXXX.p8> -- uvx --quiet --from git+https://github.com/RayanBayat/app-store-connect@v0.2.0 app-store-connect
-```
+## Allowing changes
 
-Restart Claude Code and ask "list my apps". The first time, Claude walks you through the monthly review.
+- Add `-e ASC_ALLOW_WRITES=1` to the install command.
+- For screenshot uploads, also add `-e ASC_ROOT=<folder>`. Files are only read from that folder.
 
-## Let Claude make changes
-
-Add `-e ASC_ALLOW_WRITES=1` to the install command. To allow screenshot uploads, also add `-e ASC_ROOT=<your screenshots folder>`; Claude can read files only inside that folder.
-
-**Before you turn writes on:** the approval forms protect you from Claude acting on its own. They can't protect you from an AI agent that can run any command on your computer as you. So, while writes are on:
+The confirmation forms stop Claude from making changes on its own. They don't protect against an AI agent that can run any command on your computer as you. While changes are on:
 - don't use auto-approve or bypass-permissions modes;
 - add the deny rules from [docs/security.md](docs/security.md#what-this-does-not-protect-against-and-what-to-do-about-it);
-- never auto-answer the forms with a hook.
+- don't answer the forms automatically with a hook.
 
-## What Claude can do
+## Tools
 
-| | Tools |
+| | |
 |---|---|
-| **Read** (always on) | Apps, App Store versions and their status, builds, TestFlight groups and testers, store texts per language, screenshot sets, customer reviews, review submissions, **where an app is on sale and why not, and its price** |
-| **Change** (opt-in, you approve each) | Edit store texts, add a language, change the primary language, create a version, pick its build, add or remove TestFlight testers, add a build to a group, submit for beta review, submit for App Review, reply to a customer review, upload screenshots, switch an app on or off in chosen countries, make a free app free everywhere |
-| **Maintenance** | Status, the monthly report, and confirming the review |
+| **Read** (always on) | Apps, App Store versions and their status, builds, TestFlight groups and testers, store texts per language, screenshot sets, customer reviews, review submissions, availability per country (with Apple's reasons when it isn't available) and price |
+| **Change** (with `ASC_ALLOW_WRITES`, each confirmed) | Edit store texts, add a language, change the primary language, create a version, pick its build, add or remove TestFlight testers, add a build to a group, submit for beta review, submit for App Review, reply to a customer review, upload screenshots, turn an app on or off in chosen countries, make a free app free in all countries |
+| **Maintenance** | Status, monthly report, confirm the review |
 
-Customer reviews and other text written by people outside your team are marked as untrusted, so Claude won't follow instructions hidden inside them.
+Text written by people outside your team, such as customer reviews, is marked as untrusted, so Claude won't follow instructions inside it. The full tool names are in [docs/design.md](docs/design.md#tools).
 
-## The monthly review
+## Monthly review
 
-When a month has passed, the tools pause and Claude shows you a short report: is Apple's API spec newer, has anything the server uses been deprecated, are its libraries outdated or vulnerable, did the tools change? You read it and confirm in a form, and the tools work for another 30 days. Claude can't confirm on your behalf.
+After 30 days, the tools return an error until the review is done:
+1. Claude runs `maintenance_report` and shows it to you.
+2. You confirm in a form. Claude can't confirm for you.
 
-If your client can't show forms, confirm in a normal terminal window:
+If your client can't show forms, confirm in a terminal instead:
 
 ```
 uvx --from git+https://github.com/RayanBayat/app-store-connect@v0.2.0 app-store-connect review
@@ -68,16 +66,16 @@ uvx --from git+https://github.com/RayanBayat/app-store-connect@v0.2.0 app-store-
 
 ## Updating
 
-You run exactly the version in your install command (`@v0.2.0`). To update, read [CHANGELOG.md](CHANGELOG.md), then reinstall with the new tag: `claude mcp remove app-store-connect --scope user`, followed by the install command.
+The install command pins a version (`@v0.2.0`). To update, check [CHANGELOG.md](CHANGELOG.md), run `claude mcp remove app-store-connect --scope user`, then reinstall with the new tag.
 
-Prefer the newest code on every start? Use `@main` and add `--refresh` after `uvx`. You get fixes immediately, but you also run every new commit before you've seen it.
+To always run the newest code instead, use `@main` and add `--refresh` after `uvx`. You get fixes immediately, but you also run new commits before you've seen them.
 
 ## Settings
 
 | Variable | Required | Meaning |
 |---|---|---|
-| `ASC_KEY_ID` | yes | Your API key's Key ID |
-| `ASC_ISSUER_ID` | yes | Your team's Issuer ID |
+| `ASC_KEY_ID` | yes | Key ID of the API key |
+| `ASC_ISSUER_ID` | yes | Issuer ID of your team |
 | `ASC_PRIVATE_KEY_PATH` | yes | Path to the `.p8` file. Must be private (`chmod 600`). The key itself is never accepted as a variable. |
 | `ASC_KEY_KIND` | no | `team` (default) or `individual` |
 | `ASC_ALLOW_WRITES` | no | `1` turns on the change tools. Default: off |
@@ -87,13 +85,13 @@ Prefer the newest code on every start? Use `@main` and add `--refresh` after `uv
 
 ## Troubleshooting
 
-Check your setup and make one read-only call to Apple:
+Check the settings and make one read-only call to Apple:
 
 ```
 ASC_KEY_ID=<key id> ASC_ISSUER_ID=<issuer id> ASC_PRIVATE_KEY_PATH=<path> uvx --from git+https://github.com/RayanBayat/app-store-connect@v0.2.0 app-store-connect doctor --online
 ```
 
-`status` shows when your next review is due.
+`app-store-connect status` shows when the next review is due.
 
 ## Uninstall
 
@@ -104,8 +102,8 @@ rm -rf ~/.local/state/app-store-connect
 
 ## Contributing
 
-Pull requests are welcome. Start with [AGENTS.md](AGENTS.md) (the house rules), [docs/design.md](docs/design.md) (how it works) and [MAINTENANCE.md](MAINTENANCE.md).
+See [AGENTS.md](AGENTS.md) for the rules, [docs/design.md](docs/design.md) for how it works and [MAINTENANCE.md](MAINTENANCE.md) for the monthly routine.
 
 ---
 
-MIT licensed. Not affiliated with or endorsed by Apple. "App Store Connect" is a trademark of Apple Inc.
+MIT licensed. Not affiliated with Apple. "App Store Connect" is a trademark of Apple Inc.
