@@ -8,16 +8,9 @@ without form support) means nothing is sent to Apple.
 
 from __future__ import annotations
 
-from typing import Any, Final
-
-from app_store_connect.confirmflow import ConfirmationRefusedError, ask_human
+from app_store_connect.confirmflow import EMPTY_FORM_SCHEMA, ConfirmationRefusedError, ask_human
 from app_store_connect.textsafe import escape_display
 from app_store_connect.tools.base import ToolContext, ToolRefusedError
-
-# No input fields: the form shows the change, and the human's own Accept button is the
-# approval. (A required checkbox could not be ticked in Claude Code's form, which blocked
-# every confirmation.) The model cannot press Accept: only the human's client can.
-APPROVE_SCHEMA: Final[dict[str, Any]] = {"type": "object", "properties": {}}
 
 
 def show_value(value: object) -> str:
@@ -65,7 +58,7 @@ async def confirm_change(
             tool_name=ctx.tool_name,
             arguments=ctx.arguments,
             message=build_message(title, lines, public=public),
-            schema=APPROVE_SCHEMA,
+            schema=EMPTY_FORM_SCHEMA,
             input_responses=ctx.input_responses,
             request_state=ctx.request_state,
         )

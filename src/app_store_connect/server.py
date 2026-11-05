@@ -25,7 +25,7 @@ from mcp.server.context import ServerRequestContext
 from mcp.server.request_state import RequestStateBoundary, RequestStateSecurity
 from mcp.server.stdio import stdio_server
 
-from app_store_connect import __version__
+from app_store_connect import APP_NAME, __version__
 from app_store_connect.auth import AuthError, TokenProvider
 from app_store_connect.client import AscClient, AscError
 from app_store_connect.config import Config, ConfigError, load_config
@@ -44,8 +44,6 @@ from app_store_connect.tools.base import (
 )
 
 logger = logging.getLogger(__name__)
-
-SERVER_NAME = "app-store-connect"
 
 
 def error_result(text: str) -> types.CallToolResult:
@@ -190,7 +188,7 @@ class AppServer:
     def build_server(self) -> Server[Any]:
         """Create the low-level MCP server wired to this object."""
         server: Server[Any] = Server(
-            SERVER_NAME,
+            APP_NAME,
             version=__version__,
             lifespan=self.lifespan,
             on_list_tools=self.list_tools,
@@ -199,7 +197,7 @@ class AppServer:
         # Seals the request_state of 2026-07-28 confirmations (AES-GCM, random per-process key,
         # bound to the tool name and exact arguments, expires after 10 minutes).
         server.middleware.append(
-            RequestStateBoundary(self._request_state, default_audience=SERVER_NAME)
+            RequestStateBoundary(self._request_state, default_audience=APP_NAME)
         )
         return server
 

@@ -14,9 +14,8 @@ import json
 from dataclasses import dataclass
 from importlib import metadata
 
-from app_store_connect import __version__
+from app_store_connect import APP_NAME, __version__
 
-PACKAGE: str = "app-store-connect"
 SHORT_COMMIT: int = 12
 
 
@@ -47,7 +46,7 @@ def commit_from_direct_url(text: str | None) -> str:
 def _direct_url_text() -> str | None:
     """The installed package's direct_url.json, or None (not installed, or not from a URL)."""
     try:
-        return metadata.distribution(PACKAGE).read_text("direct_url.json")
+        return metadata.distribution(APP_NAME).read_text("direct_url.json")
     except metadata.PackageNotFoundError:
         return None
 

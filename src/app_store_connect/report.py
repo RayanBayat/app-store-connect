@@ -21,7 +21,7 @@ from typing import Any, Final
 
 import httpx
 
-from app_store_connect import osv
+from app_store_connect import APP_NAME, osv
 from app_store_connect.httpio import DownloadError, fetch_limited
 from app_store_connect.identity import CodeIdentity, compare_with_review, current_identity
 from app_store_connect.maintenance_record import MaintenanceRecord
@@ -49,7 +49,6 @@ MAX_PYPI_BYTES: Final = 1024 * 1024  # a releases feed is about 15 KB
 SPEC_REDIRECT_HOSTS: Final = ("developer.apple.com",)
 SPEC_MEMBER: Final = "openapi.oas.json"
 PYPI_FEED_URL: Final = "https://pypi.org/rss/project/{name}/releases.xml"
-OWN_PACKAGE: Final = "app-store-connect"
 METHODS: Final = ("get", "post", "patch", "put", "delete")
 EXAMPLES_SHOWN: Final = 8
 
@@ -247,7 +246,7 @@ def installed_packages() -> list[osv.Query]:
     found = {
         (dist.metadata["Name"], dist.version)
         for dist in metadata.distributions()
-        if dist.metadata["Name"] and dist.metadata["Name"].lower() != OWN_PACKAGE
+        if dist.metadata["Name"] and dist.metadata["Name"].lower() != APP_NAME
     }
     return sorted(found, key=lambda item: item[0].lower())
 
@@ -264,13 +263,13 @@ def direct_packages() -> list[osv.Query]:
     the report say "all up to date" without having checked anything.
     """
     try:
-        requirements = metadata.requires(OWN_PACKAGE)
+        requirements = metadata.requires(APP_NAME)
     except metadata.PackageNotFoundError as exc:
         raise ReportError(
-            f"{OWN_PACKAGE} is not installed as a package, so its dependencies cannot be listed."
+            f"{APP_NAME} is not installed as a package, so its dependencies cannot be listed."
         ) from exc
     if not requirements:
-        raise ReportError(f"The installed {OWN_PACKAGE} lists no dependencies in its metadata.")
+        raise ReportError(f"The installed {APP_NAME} lists no dependencies in its metadata.")
     names = {
         match.group(0)
         for text in requirements

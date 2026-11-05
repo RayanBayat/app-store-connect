@@ -13,7 +13,7 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
-from app_store_connect import __version__
+from app_store_connect import APP_NAME, __version__
 from app_store_connect.auth import AuthError, TokenProvider
 from app_store_connect.client import AscClient, AscError
 from app_store_connect.config import (
@@ -36,7 +36,7 @@ DEFAULT_OUTCOME = "Report read in a terminal."
 def build_parser() -> argparse.ArgumentParser:
     """Create the command-line parser."""
     parser = argparse.ArgumentParser(
-        prog="app-store-connect",
+        prog=APP_NAME,
         description="App Store Connect for AI assistants (MCP server) with a monthly review.",
     )
     parser.add_argument("--version", action="version", version=f"app-store-connect {__version__}")

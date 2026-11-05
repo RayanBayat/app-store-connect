@@ -1,7 +1,7 @@
 """Where this tool keeps its files, following the XDG convention.
 
-Everything lives in private (0700) folders because it includes downloaded binaries and
-review records that other users on the machine have no business touching.
+Everything lives in private (0700) folders because it holds the maintenance record (and its
+temporary files), which other users on the machine have no business touching.
 """
 
 from __future__ import annotations
@@ -11,7 +11,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
 
-APP_NAME: Final = "app-store-connect"
+from app_store_connect import APP_NAME
+
 PRIVATE_DIR_MODE: Final = 0o700
 
 

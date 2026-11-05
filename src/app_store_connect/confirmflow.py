@@ -40,6 +40,10 @@ logger = logging.getLogger(__name__)
 INPUT_REQUIRED_VERSION: Final = "2026-07-28"
 INPUT_KEY: Final = "confirm"
 STATE_TTL_SECONDS: Final = 600.0  # 10 minutes, the same as the SDK's request-state expiry
+# Every confirmation form has no input fields: the form text shows the change, and the human's own
+# Accept button is the approval. (A required checkbox could not be ticked in Claude Code's form,
+# which blocked every confirmation.) The model cannot press Accept: only the human's client can.
+EMPTY_FORM_SCHEMA: Final[dict[str, Any]] = {"type": "object", "properties": {}}
 
 
 class ConfirmationRefusedError(Exception):

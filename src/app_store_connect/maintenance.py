@@ -24,6 +24,7 @@ from mcp.server.session import ServerSession
 from app_store_connect import __version__
 from app_store_connect.config import Config
 from app_store_connect.confirmflow import (
+    EMPTY_FORM_SCHEMA,
     ConfirmationBook,
     ConfirmationRefusedError,
     InputRequiredSignal,
@@ -54,9 +55,6 @@ STATUS: Final = "maintenance_status"
 REPORT: Final = "maintenance_report"
 CONFIRM: Final = "maintenance_confirm_review"
 MAX_SUMMARY_CHARS: Final = 500
-# No input fields: the human's own Accept button confirms they read the report (see
-# tools/confirm.py for why there is no checkbox).
-CONFIRM_SCHEMA: Final[dict[str, Any]] = {"type": "object", "properties": {}}
 HTTP_TIMEOUT: Final = httpx.Timeout(30.0, connect=10.0)
 
 _EMPTY_INPUT: Final[dict[str, Any]] = {"type": "object", "properties": {}}
@@ -296,7 +294,7 @@ class Maintenance:
             tool_name=CONFIRM,
             arguments=arguments,
             message=review_form(summary, built_at, facts, load_record()),
-            schema=CONFIRM_SCHEMA,
+            schema=EMPTY_FORM_SCHEMA,
             input_responses=input_responses,
             request_state=request_state,
         )
