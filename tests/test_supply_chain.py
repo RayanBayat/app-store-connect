@@ -1,4 +1,4 @@
-"""H1: runtime dependencies are pinned exactly and CI/Dependabot follow the hardening rules."""
+"""Runtime dependencies are pinned exactly, and CI and Dependabot follow the hardening rules."""
 
 from __future__ import annotations
 

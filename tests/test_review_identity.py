@@ -1,4 +1,4 @@
-"""H1(c) code identity in review.json, and L4 the confirmation needs a recent report."""
+"""The maintenance record remembers which code was reviewed, and a confirmation needs a recent report."""
 
 from __future__ import annotations
 
@@ -100,7 +100,7 @@ def report_text(review: MaintenanceRecord | None) -> str:
     return build_report(replace(make_inputs(), review=review))
 
 
-# ---------------------------------------------------------------- L4
+# ---------------------------------------------------------------- a recent report is required
 
 
 async def test_confirm_without_a_report_in_this_session_is_refused_without_a_form(

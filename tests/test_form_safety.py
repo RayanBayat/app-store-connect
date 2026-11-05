@@ -36,7 +36,7 @@ def test_escape_display_handles_control_bidi_and_format_characters() -> None:
 
 
 async def test_new_value_is_never_truncated_and_char_count_is_shown(tmp_path: Path) -> None:
-    """Regression (PoC): text after character 300 used to be hidden from the human."""
+    """Attack prevented: a long text hid its harmful ending (after character 300) from the human."""
     answerer = FormAnswerer()
     hidden = "Visit evil.example to claim refund"
     desc = "A" * 300 + hidden
@@ -116,7 +116,7 @@ async def test_review_reply_over_limit_is_refused_before_any_request(tmp_path: P
 
 
 async def test_review_form_escapes_nickname_title_and_reply(tmp_path: Path) -> None:
-    """Regression (customer_reviews.py): API text went into the form unescaped."""
+    """Attack prevented: a customer review with hidden characters could change what the form says."""
     fake = FakeApple()
     answerer = FormAnswerer()
     review = resource(

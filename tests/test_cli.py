@@ -135,7 +135,7 @@ def test_doctor_masks_key_id_in_key_file_name(
 def test_doctor_with_an_encrypted_key_fails_cleanly(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Regression (L6): an encrypted key used to crash doctor with a TypeError."""
+    """An encrypted key must give a readable doctor message, not a TypeError."""
     env = good_env(tmp_path)
     pem = ec.generate_private_key(ec.SECP256R1()).private_bytes(
         serialization.Encoding.PEM,

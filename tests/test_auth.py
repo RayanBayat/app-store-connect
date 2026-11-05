@@ -92,7 +92,7 @@ def sign_error(tmp_path: Path, mutate: object = None) -> str:
 
 
 def test_key_that_became_group_or_world_readable_is_refused_at_signing(tmp_path: Path) -> None:
-    """Regression (L5): permissions were only checked at start-up, not when signing."""
+    """Attack prevented: a key file made readable after start-up was still used for signing."""
     message = sign_error(tmp_path, lambda p: p.chmod(0o640))
     assert "chmod 600" in message
 
@@ -131,7 +131,7 @@ def encrypted_key_pem() -> bytes:
 
 
 def test_encrypted_key_gives_a_clear_message_not_a_crash(tmp_path: Path) -> None:
-    """Regression (L6): PyJWT raises TypeError for an encrypted key; it used to escape."""
+    """An encrypted key makes PyJWT raise TypeError; it must become a readable error."""
     message = sign_error(tmp_path, lambda p: p.write_bytes(encrypted_key_pem()))
     assert "unsupported or encrypted" in message
     assert "hunter2" not in message

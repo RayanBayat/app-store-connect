@@ -214,7 +214,7 @@ def test_key_file_owned_by_another_user_is_refused_at_startup(
 
 
 def test_repr_never_shows_key_id_or_issuer_id(env: dict[str, str]) -> None:
-    """Regression (INFO): a ToolContext repr in a log line must not leak these IDs."""
+    """Attack prevented: printing a ToolContext in a log line must not leak the key or issuer ID."""
     config = load_config(env)
     assert KEY_ID not in repr(config)
     assert ISSUER not in repr(config)

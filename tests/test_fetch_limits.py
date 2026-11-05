@@ -1,4 +1,4 @@
-"""INFO: report fetches have size caps, a page limit and never follow redirects blindly."""
+"""Report downloads have size caps and a page limit, and never follow redirects blindly."""
 
 from __future__ import annotations
 

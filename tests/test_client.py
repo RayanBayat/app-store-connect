@@ -239,7 +239,7 @@ async def test_presigned_upload_failure_status_reported(tmp_path: Path) -> None:
 async def test_dot_and_underscore_ids_are_refused_before_any_request(
     tmp_path: Path, bad: str
 ) -> None:
-    """Regression (L1): app_id='..' used to climb out of /v1/apps/{id}/betaGroups."""
+    """Attack prevented: an app_id of '..' climbing out of /v1/apps/{id}/betaGroups."""
     seen: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -269,7 +269,7 @@ def test_filled_template_path_must_survive_url_parsing_unchanged(
 
 
 async def test_next_link_to_another_endpoint_on_apple_host_is_refused(tmp_path: Path) -> None:
-    """Regression (INFO): links.next pointing at /v1/users must not be followed."""
+    """Attack prevented: a pagination link to /v1/users (not an endpoint we use) is not followed."""
     paths: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:

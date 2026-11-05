@@ -215,13 +215,13 @@ async def test_non_https_upload_url_is_refused(tmp_path: Path, root: Path) -> No
     assert "not https" in text_of(result)
 
 
-# ---------------------------------------------------------------- L2: one open descriptor
+# ---------------------------------------------------------------- the file is opened only once
 
 
 async def test_file_swapped_for_a_symlink_while_the_form_is_open_is_not_followed(
     tmp_path: Path, root: Path
 ) -> None:
-    """Regression (PoC): the file was re-opened by path after the human said yes."""
+    """Attack prevented: swapping the file after the human said yes, so other bytes were uploaded."""
     secret = tmp_path / "secret.p8"
     secret.write_bytes(b"-----BEGIN PRIVATE KEY-----SECRETSECRET" + b"x" * 69)
     sent: list[bytes] = []
@@ -286,7 +286,7 @@ def test_open_refuses_oversized_file(tmp_path: Path, monkeypatch: pytest.MonkeyP
         screenshots.read_checked_file(a, a.stat())
 
 
-# ---------------------------------------------------------------- L3: upload instructions
+# ---------------------------------------------------------------- upload instructions from Apple
 
 
 async def run_with_ops(
@@ -314,7 +314,7 @@ GOOD = "https://store-001.blobstore.apple.com/part"
 @pytest.mark.parametrize(
     "ops",
     [
-        [part("https://127.0.0.1:8443/internal", method="POST")],  # the reviewer's PoC
+        [part("https://127.0.0.1:8443/internal", method="POST")],  # an internal address
         [part("https://127.0.0.1/internal")],
         [part("https://[::1]/internal")],
         [part("https://store.apple.com.evil.example/internal")],
