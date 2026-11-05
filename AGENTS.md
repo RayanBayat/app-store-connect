@@ -42,6 +42,8 @@ easy for a **beginner computer science student** to read, learn from and debug.
 - **Debuggable.** Error messages say what went wrong and what to do next. Nothing fails silently.
   Tests read like small examples of how the code is used.
 - **Consistent.** Follow the patterns already in the repo, so learning one tool teaches the rest.
+  Every tool module has the same layout; the steps are in the `tools/__init__.py` header
+  ("How to add a tool").
 - **Review rule.** If a beginner couldn't follow a change, rewrite it before merging.
 
 ## Commands
