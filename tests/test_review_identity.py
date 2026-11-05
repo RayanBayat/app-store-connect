@@ -10,7 +10,6 @@ from typing import cast
 
 import mcp_types as types
 import pytest
-from mcp.client.session import ClientRequestContext
 from mcp.server.session import ServerSession
 
 from app_store_connect import __version__, identity, maintenance
@@ -24,10 +23,10 @@ from app_store_connect.maintenance_record import (
 )
 from app_store_connect.report import ReportFacts, ReportResult, build_report
 
-from .apple_fake import FACTS, FakeApple, connected, text_of
+from .apple_fake import FACTS, FakeApple, FormAnswerer, connected, text_of
 from .conftest import NOW
-from .helpers import make_config
-from .test_report import make_inputs
+from .helpers import FakeClock, make_config
+from .report_fake import make_inputs
 
 DIRECT_URL = json.dumps(
     {"url": "https://github.com/x/y", "vcs_info": {"vcs": "git", "commit_id": "a" * 40}}
@@ -104,33 +103,22 @@ def report_text(review: MaintenanceRecord | None) -> str:
 # ---------------------------------------------------------------- L4
 
 
-class Forms:
-    def __init__(self) -> None:
-        self.messages: list[str] = []
-
-    async def __call__(
-        self, context: ClientRequestContext, params: types.ElicitRequestParams
-    ) -> types.ElicitResult:
-        self.messages.append(params.message)
-        return types.ElicitResult(action="accept", content={"read": True})
-
-
 async def test_confirm_without_a_report_in_this_session_is_refused_without_a_form(
     tmp_path: Path,
 ) -> None:
-    forms = Forms()
-    async with connected(tmp_path, FakeApple(), fresh_review=False, elicit=forms) as client:
+    answerer = FormAnswerer()
+    async with connected(tmp_path, FakeApple(), fresh_review=False, elicit=answerer) as client:
         result = await client.call_tool("maintenance_confirm_review", {"summary": "fine"})
     assert result.is_error
     assert "maintenance_report" in text_of(result)
-    assert forms.messages == []
+    assert answerer.forms == []
     assert load_record() is None
 
 
-def maintenance_with_clock(tmp_path: Path, now: list[datetime]) -> Maintenance:
+def maintenance_with_clock(tmp_path: Path, clock: FakeClock[datetime]) -> Maintenance:
     return Maintenance(
         make_config(tmp_path / "k"),
-        clock=lambda: now[0],
+        clock=clock,
         report_fn=lambda _tools: ReportResult("R", FACTS),
     )
 
@@ -157,26 +145,26 @@ class FakeSession:
 
     async def elicit_form(self, message: str, schema: object) -> types.ElicitResult:
         self.messages.append(message)
-        return types.ElicitResult(action="accept", content={"read": True})
+        return types.ElicitResult(action="accept")
 
 
 async def test_report_older_than_30_minutes_is_not_enough(tmp_path: Path) -> None:
-    now = [NOW]
-    m = maintenance_with_clock(tmp_path, now)
+    clock = FakeClock(NOW)
+    m = maintenance_with_clock(tmp_path, clock)
     session = FakeSession()
     await m.call("maintenance_report", {}, as_session(session), ["t"])
-    now[0] = NOW + timedelta(minutes=31)
+    clock.now = NOW + timedelta(minutes=31)
     result = await confirm(m, session)
     assert result.is_error
     assert session.messages == []
-    now[0] = NOW + timedelta(minutes=29)
+    clock.now = NOW + timedelta(minutes=29)
     result = await confirm(m, session)
     assert not result.is_error
 
 
 async def test_a_report_from_another_session_does_not_count(tmp_path: Path) -> None:
-    now = [NOW]
-    first, second = maintenance_with_clock(tmp_path, now), maintenance_with_clock(tmp_path, now)
+    clock = FakeClock(NOW)
+    first, second = maintenance_with_clock(tmp_path, clock), maintenance_with_clock(tmp_path, clock)
     session = FakeSession()
     await first.call("maintenance_report", {}, as_session(session), ["t"])
     result = await confirm(second, session)

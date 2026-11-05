@@ -11,8 +11,18 @@ import pytest
 from app_store_connect.tools import read_tools, write_tools
 from app_store_connect.tools.agerating import BOOLEAN_QUESTIONS, FREQUENCY_QUESTIONS
 
-from .apple_fake import FakeApple, connected, listing, one, resource, text_of
-from .test_availability import ERAS, Answerer, run
+from .apple_fake import (
+    PROTOCOLS,
+    FakeApple,
+    FormAction,
+    FormAnswerer,
+    connected,
+    listing,
+    one,
+    resource,
+    run,
+    text_of,
+)
 
 DECL = "/v1/ageRatingDeclarations/d1"
 
@@ -102,14 +112,14 @@ async def test_all_others_is_documented_in_the_schema() -> None:
 # ---------------------------------------------------------------- update: happy path
 
 
-@pytest.mark.parametrize("mode", ERAS)
-async def test_accept_sends_exactly_one_patch(tmp_path: Path, mode: str) -> None:
-    fake, answer = age_fake(gambling=False), Answerer()
+@pytest.mark.parametrize("protocol", PROTOCOLS)
+async def test_accept_sends_exactly_one_patch(tmp_path: Path, protocol: str) -> None:
+    fake, answer = age_fake(gambling=False), FormAnswerer()
     args = {
         "app_info_id": "i1",
         "answers": {"advertising": True, "gambling": False, "violenceRealistic": "NONE"},
     }
-    result = await run(tmp_path, fake, "update_age_rating", args, answer, mode)
+    result = await run(tmp_path, fake, "update_age_rating", args, answer, protocol)
     assert not result.is_error, text_of(result)
     assert [(w.method, w.path, w.body) for w in fake.writes()] == [
         (
@@ -124,8 +134,8 @@ async def test_accept_sends_exactly_one_patch(tmp_path: Path, mode: str) -> None
             },
         )
     ]
-    assert len(answer.messages) == 1
-    form = answer.messages[0]
+    assert len(answer.forms) == 1
+    form = answer.forms[0]
     assert "Advertising: not answered  ->  Yes" in form
     assert "Realistic violence: not answered  ->  None" in form
     assert "Gambling" not in form  # unchanged
@@ -133,21 +143,23 @@ async def test_accept_sends_exactly_one_patch(tmp_path: Path, mode: str) -> None
 
 
 @pytest.mark.parametrize("action", ["decline", "cancel"])
-@pytest.mark.parametrize("mode", ERAS)
-async def test_decline_or_cancel_sends_nothing(tmp_path: Path, action: str, mode: str) -> None:
+@pytest.mark.parametrize("protocol", PROTOCOLS)
+async def test_decline_or_cancel_sends_nothing(
+    tmp_path: Path, action: FormAction, protocol: str
+) -> None:
     fake = age_fake()
     args = {"app_info_id": "i1", "answers": {"socialMedia": False}}
-    result = await run(tmp_path, fake, "update_age_rating", args, Answerer(action), mode)
+    result = await run(tmp_path, fake, "update_age_rating", args, FormAnswerer(action), protocol)
     assert result.is_error and "Nothing was changed" in text_of(result)
     assert fake.writes() == []
 
 
 async def test_nothing_to_change_asks_nothing(tmp_path: Path) -> None:
-    fake, answer = age_fake(socialMedia=False), Answerer()
+    fake, answer = age_fake(socialMedia=False), FormAnswerer()
     args = {"app_info_id": "i1", "answers": {"socialMedia": False}}
     result = await run(tmp_path, fake, "update_age_rating", args, answer)
     assert not result.is_error and "Nothing to change" in text_of(result)
-    assert answer.messages == [] and fake.writes() == []
+    assert answer.forms == [] and fake.writes() == []
 
 
 # ---------------------------------------------------------------- update: refusals
@@ -178,40 +190,40 @@ async def test_nothing_to_change_asks_nothing(tmp_path: Path) -> None:
 async def test_invalid_names_or_values_are_refused_before_any_form(
     tmp_path: Path, answers: Any
 ) -> None:
-    fake, answer = age_fake(), Answerer()
+    fake, answer = age_fake(), FormAnswerer()
     result = await run(
         tmp_path, fake, "update_age_rating", {"app_info_id": "i1", "answers": answers}, answer
     )
     assert result.is_error
-    assert answer.messages == [] and fake.writes() == []
+    assert answer.forms == [] and fake.writes() == []
     assert fake.seen == []  # nothing was even read
 
 
 async def test_unknown_name_is_named_in_the_error(tmp_path: Path) -> None:
     args = {"app_info_id": "i1", "answers": {"nonsense": True}}
-    result = await run(tmp_path, age_fake(), "update_age_rating", args, Answerer())
+    result = await run(tmp_path, age_fake(), "update_age_rating", args, FormAnswerer())
     assert "nonsense" in text_of(result)
 
 
 async def test_bad_app_info_id_is_refused(tmp_path: Path) -> None:
     args = {"app_info_id": "../x", "answers": {"advertising": True}}
-    result = await run(tmp_path, age_fake(), "update_age_rating", args, Answerer())
+    result = await run(tmp_path, age_fake(), "update_age_rating", args, FormAnswerer())
     assert result.is_error
 
 
 async def test_non_editable_app_info_is_refused(tmp_path: Path) -> None:
-    fake, answer = age_fake(), Answerer()
+    fake, answer = age_fake(), FormAnswerer()
     args = {"app_info_id": "i0", "answers": {"advertising": True}}
     result = await run(tmp_path, fake, "update_age_rating", args, answer)
     assert result.is_error and "READY_FOR_DISTRIBUTION" in text_of(result)
-    assert answer.messages == [] and fake.writes() == []
+    assert answer.forms == [] and fake.writes() == []
 
 
 @pytest.mark.parametrize("state", ["PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED"])
 async def test_editable_states_are_accepted(tmp_path: Path, state: str) -> None:
     fake = age_fake(state=state)
     args = {"app_info_id": "i1", "answers": {"advertising": True}}
-    result = await run(tmp_path, fake, "update_age_rating", args, Answerer())
+    result = await run(tmp_path, fake, "update_age_rating", args, FormAnswerer())
     assert not result.is_error, text_of(result)
     assert len(fake.writes()) == 1
 
@@ -222,26 +234,26 @@ async def test_editable_states_are_accepted(tmp_path: Path, state: str) -> None:
 async def test_other_states_are_refused(tmp_path: Path, state: str) -> None:
     fake = age_fake(state=state)
     args = {"app_info_id": "i1", "answers": {"advertising": True}}
-    result = await run(tmp_path, fake, "update_age_rating", args, Answerer())
+    result = await run(tmp_path, fake, "update_age_rating", args, FormAnswerer())
     assert result.is_error and fake.writes() == []
 
 
 # ---------------------------------------------------------------- all_others
 
 
-@pytest.mark.parametrize("mode", ERAS)
+@pytest.mark.parametrize("protocol", PROTOCOLS)
 async def test_all_others_none_fills_the_rest_and_lists_every_change(
-    tmp_path: Path, mode: str
+    tmp_path: Path, protocol: str
 ) -> None:
     fake = age_fake(
         gambling=True, violenceRealistic="FREQUENT", ageRatingOverrideV2="NINE_PLUS", lootBox=False
     )
-    answer = Answerer()
+    answer = FormAnswerer()
     args = {
         "app_info_id": "i1",
         "answers": {"all_others": "none", "userGeneratedContent": True},
     }
-    result = await run(tmp_path, fake, "update_age_rating", args, answer, mode)
+    result = await run(tmp_path, fake, "update_age_rating", args, answer, protocol)
     assert not result.is_error, text_of(result)
     (patch,) = fake.writes()
     sent = patch.body["data"]["attributes"]
@@ -251,7 +263,7 @@ async def test_all_others_none_fills_the_rest_and_lists_every_change(
     del expected["lootBox"]  # already false: unchanged
     assert sent == expected
     assert "ageRatingOverrideV2" not in sent and "kidsAgeBand" not in sent
-    (form,) = answer.messages
+    (form,) = answer.forms
     assert form.count("  ->  ") == len(expected)
     assert "Gambling: Yes  ->  No" in form
     assert "Realistic violence: Frequent  ->  None" in form

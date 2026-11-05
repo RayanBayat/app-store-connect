@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, ed25519
 
 from app_store_connect.auth import AuthError, TokenProvider
 
-from .helpers import ISSUER_ID, KEY_ID, make_config
+from .helpers import ISSUER_ID, KEY_ID, FakeClock, make_config
 
 
 def test_team_token_header_and_claims(tmp_path: Path) -> None:
@@ -56,12 +56,12 @@ def test_individual_key_uses_sub_user_and_no_iss(tmp_path: Path) -> None:
 
 
 def test_token_is_cached_then_renewed_before_expiry(tmp_path: Path) -> None:
-    now = [1_000_000.0]
-    provider = TokenProvider(make_config(tmp_path / "k"), clock=lambda: now[0])
+    clock = FakeClock(1_000_000.0)
+    provider = TokenProvider(make_config(tmp_path / "k"), clock=clock)
     first = provider.token()
-    now[0] += 600
+    clock.now += 600
     assert provider.token() == first
-    now[0] += 250  # 850s: less than a minute left of 900s
+    clock.now += 250  # 850s: less than a minute left of 900s
     assert provider.token() != first
 
 

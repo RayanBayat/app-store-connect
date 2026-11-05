@@ -8,13 +8,11 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import mcp_types as types
-from mcp.client.session import ClientRequestContext
 
 from app_store_connect import osv
 from app_store_connect.textsafe import untrusted
 
-from .apple_fake import FakeApple, connected, listing, one, resource, text_of
+from .apple_fake import FakeApple, FormAnswerer, connected, listing, one, resource, text_of
 
 MARKER = re.compile(r"\[UNTRUSTED CONTENT ([0-9a-f]{16,}) (BEGIN|END)[^\]]*\]")
 
@@ -151,12 +149,7 @@ async def test_text_echoed_back_by_write_tools_is_wrapped(tmp_path: Path) -> Non
     fake.on("POST", "/v1/betaTesters", one(resource(
         "betaTesters", "t1", email="a@b.co", firstName="FN", lastName="LN")), 201)  # fmt: skip
 
-    async def yes(
-        context: ClientRequestContext, params: types.ElicitRequestParams
-    ) -> types.ElicitResult:
-        return types.ElicitResult(action="accept", content={"approve": True})
-
-    async with connected(tmp_path, fake, allow_writes=True, elicit=yes) as client:
+    async with connected(tmp_path, fake, allow_writes=True, elicit=FormAnswerer()) as client:
         result = await client.call_tool(
             "add_beta_tester", {"beta_group_id": "g1", "email": "a@b.co"}
         )

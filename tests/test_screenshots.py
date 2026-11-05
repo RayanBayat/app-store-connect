@@ -10,21 +10,14 @@ from typing import Any
 import httpx
 import mcp_types as types
 import pytest
-from mcp.client.session import ClientRequestContext
 
 from app_store_connect.tools import screenshots
 from app_store_connect.tools.base import ToolRefusedError
 
-from .apple_fake import FakeApple, connected, one, resource, text_of
+from .apple_fake import FakeApple, FormAnswerer, connected, one, resource, text_of
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"0123456789" * 10  # 108 bytes
 PRESIGNED = "https://store-001.blobstore.apple.com/part"
-
-
-async def approve(
-    context: ClientRequestContext, params: types.ElicitRequestParams
-) -> types.ElicitResult:
-    return types.ElicitResult(action="accept", content={"approve": True})
 
 
 def make_fake(size: int) -> FakeApple:
@@ -73,7 +66,9 @@ def root(tmp_path: Path) -> Path:
 async def upload(
     tmp_path: Path, fake: FakeApple, root: Path | None, path: str
 ) -> types.CallToolResult:
-    async with connected(tmp_path, fake, allow_writes=True, elicit=approve, root=root) as client:
+    async with connected(
+        tmp_path, fake, allow_writes=True, elicit=FormAnswerer(), root=root
+    ) as client:
         return await client.call_tool(
             "upload_screenshot", {"screenshot_set_id": "s1", "file_path": path}
         )
@@ -240,14 +235,12 @@ async def test_file_swapped_for_a_symlink_while_the_form_is_open_is_not_followed
     fake.on("PUT", "/part2", record)
     shot = root / "shot.png"
 
-    async def swap(
-        context: ClientRequestContext, params: types.ElicitRequestParams
-    ) -> types.ElicitResult:
+    def swap_file_for_symlink(form_number: int) -> None:
         shot.unlink()
         shot.symlink_to(secret)  # swapped while the human reads the form
-        return types.ElicitResult(action="accept", content={"approve": True})
 
-    async with connected(tmp_path, fake, allow_writes=True, elicit=swap, root=root) as client:
+    answerer = FormAnswerer(on_form=swap_file_for_symlink)
+    async with connected(tmp_path, fake, allow_writes=True, elicit=answerer, root=root) as client:
         await client.call_tool(
             "upload_screenshot", {"screenshot_set_id": "s1", "file_path": "shot.png"}
         )

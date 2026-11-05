@@ -7,19 +7,26 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import mcp_types as types
 import pytest
-from mcp.client.session import ClientRequestContext
 
 from app_store_connect.tools import read_tools, write_tools
 from app_store_connect.tools.availability import STATUS_HINTS
 
-from .apple_fake import FakeApple, connected, listing, one, resource, text_of
+from .apple_fake import (
+    PROTOCOLS,
+    FakeApple,
+    FormAction,
+    FormAnswerer,
+    connected,
+    listing,
+    one,
+    resource,
+    run,
+    text_of,
+)
 
 API = "https://api.appstoreconnect.apple.com"
 AV_PATH = "/v2/appAvailabilities/av1/territoryAvailabilities"
-MODERN = "2026-07-28"
-ERAS = ["legacy", MODERN]
 
 
 def ta(code: str, available: bool, statuses: tuple[str, ...] = (), **extra: Any) -> dict[str, Any]:
@@ -166,32 +173,6 @@ async def test_write_tools_absent_when_writes_are_off(tmp_path: Path) -> None:
 # ---------------------------------------------------------------- writes
 
 
-class Answerer:
-    def __init__(self, action: str = "accept") -> None:
-        self.action = action
-        self.messages: list[str] = []
-
-    async def __call__(
-        self, context: ClientRequestContext, params: types.ElicitRequestParams
-    ) -> types.ElicitResult:
-        self.messages.append(params.message)
-        if self.action == "accept":
-            return types.ElicitResult(action="accept", content={})
-        return types.ElicitResult(action=self.action)  # type: ignore[arg-type]
-
-
-async def run(
-    tmp_path: Path,
-    fake: FakeApple,
-    tool: str,
-    args: dict[str, Any],
-    answer: Answerer,
-    mode: Any = "legacy",
-) -> types.CallToolResult:
-    async with connected(tmp_path, fake, allow_writes=True, elicit=answer, mode=mode) as client:
-        return await client.call_tool(tool, args)
-
-
 def patch_fake() -> FakeApple:
     fake = av_fake(
         ta("SWE", False, ("MISSING_RATING",)), ta("USA", False), ta("GBR", True), ta("NOR", True)
@@ -211,21 +192,21 @@ def patch_body(code: str, available: bool) -> dict[str, Any]:
     }
 
 
-@pytest.mark.parametrize("mode", ERAS)
+@pytest.mark.parametrize("protocol", PROTOCOLS)
 async def test_set_availability_accept_patches_each_changed_territory_once(
-    tmp_path: Path, mode: str
+    tmp_path: Path, protocol: str
 ) -> None:
-    fake, answer = patch_fake(), Answerer()
+    fake, answer = patch_fake(), FormAnswerer()
     args = {"app_id": "1", "territories": ["swe", "USA", "GBR"], "available": True}
-    result = await run(tmp_path, fake, "set_territory_availability", args, answer, mode)
+    result = await run(tmp_path, fake, "set_territory_availability", args, answer, protocol)
     assert not result.is_error, text_of(result)
     # GBR is already available: no request for it. Requests go out in the order given.
     assert [(w.method, w.path, w.body) for w in fake.writes()] == [
         ("PATCH", "/v1/territoryAvailabilities/ta-SWE", patch_body("SWE", True)),
         ("PATCH", "/v1/territoryAvailabilities/ta-USA", patch_body("USA", True)),
     ]
-    assert len(answer.messages) == 1
-    form = answer.messages[0]
+    assert len(answer.forms) == 1
+    form = answer.forms[0]
     assert "Sweden (SWE): not available  ->  available" in form
     assert "United States (USA): not available  ->  available" in form
     assert "United Kingdom (GBR): available  ->  available" in form
@@ -233,13 +214,15 @@ async def test_set_availability_accept_patches_each_changed_territory_once(
 
 
 @pytest.mark.parametrize("action", ["decline", "cancel"])
-@pytest.mark.parametrize("mode", ERAS)
+@pytest.mark.parametrize("protocol", PROTOCOLS)
 async def test_set_availability_decline_or_cancel_sends_nothing(
-    tmp_path: Path, action: str, mode: str
+    tmp_path: Path, action: FormAction, protocol: str
 ) -> None:
     fake = patch_fake()
     args = {"app_id": "1", "territories": ["SWE"], "available": True}
-    result = await run(tmp_path, fake, "set_territory_availability", args, Answerer(action), mode)
+    result = await run(
+        tmp_path, fake, "set_territory_availability", args, FormAnswerer(action), protocol
+    )
     assert result.is_error and "Nothing was changed" in text_of(result)
     assert fake.writes() == []
 
@@ -248,30 +231,30 @@ async def test_set_availability_decline_or_cancel_sends_nothing(
     "territories", [["XXX"], ["SWE", "ZZZ"], ["se"], [], "SWE", ["SWE", 5]], ids=str
 )
 async def test_invalid_codes_are_refused_before_any_form(tmp_path: Path, territories: Any) -> None:
-    fake, answer = patch_fake(), Answerer()
+    fake, answer = patch_fake(), FormAnswerer()
     args = {"app_id": "1", "territories": territories, "available": False}
     result = await run(tmp_path, fake, "set_territory_availability", args, answer)
     assert result.is_error
-    assert answer.messages == [] and fake.writes() == []
+    assert answer.forms == [] and fake.writes() == []
 
 
 async def test_unknown_code_message_names_it(tmp_path: Path) -> None:
     args = {"app_id": "1", "territories": ["SWE", "ZZZ"], "available": True}
-    result = await run(tmp_path, patch_fake(), "set_territory_availability", args, Answerer())
+    result = await run(tmp_path, patch_fake(), "set_territory_availability", args, FormAnswerer())
     assert "ZZZ" in text_of(result)
 
 
 async def test_set_availability_nothing_to_change_asks_nothing(tmp_path: Path) -> None:
-    fake, answer = patch_fake(), Answerer()
+    fake, answer = patch_fake(), FormAnswerer()
     args = {"app_id": "1", "territories": ["GBR"], "available": True}
     result = await run(tmp_path, fake, "set_territory_availability", args, answer)
     assert not result.is_error and "Nothing to change" in text_of(result)
-    assert answer.messages == [] and fake.writes() == []
+    assert answer.forms == [] and fake.writes() == []
 
 
 async def test_set_availability_available_must_be_a_boolean(tmp_path: Path) -> None:
     args = {"app_id": "1", "territories": ["SWE"], "available": "yes"}
-    result = await run(tmp_path, patch_fake(), "set_territory_availability", args, Answerer())
+    result = await run(tmp_path, patch_fake(), "set_territory_availability", args, FormAnswerer())
     assert result.is_error
 
 
@@ -288,11 +271,13 @@ def create_fake() -> FakeApple:
     return fake
 
 
-@pytest.mark.parametrize("mode", ERAS)
-async def test_create_flow_when_the_app_has_no_availability_yet(tmp_path: Path, mode: str) -> None:
-    fake, answer = create_fake(), Answerer()
+@pytest.mark.parametrize("protocol", PROTOCOLS)
+async def test_create_flow_when_the_app_has_no_availability_yet(
+    tmp_path: Path, protocol: str
+) -> None:
+    fake, answer = create_fake(), FormAnswerer()
     args = {"app_id": "1", "territories": ["SWE", "USA"], "available": True}
-    result = await run(tmp_path, fake, "set_territory_availability", args, answer, mode)
+    result = await run(tmp_path, fake, "set_territory_availability", args, answer, protocol)
     assert not result.is_error, text_of(result)
     assert [(w.method, w.path, w.body) for w in fake.writes()] == [
         (
@@ -324,25 +309,27 @@ async def test_create_flow_when_the_app_has_no_availability_yet(tmp_path: Path, 
             },
         )
     ]
-    assert "no availability yet" in answer.messages[0].lower()
-    assert "Sweden (SWE)" in answer.messages[0]
+    assert "no availability yet" in answer.forms[0].lower()
+    assert "Sweden (SWE)" in answer.forms[0]
 
 
 async def test_create_flow_validates_codes_and_handles_decline(tmp_path: Path) -> None:
-    fake, answer = create_fake(), Answerer()
+    fake, answer = create_fake(), FormAnswerer()
     args = {"app_id": "1", "territories": ["ZZZ"], "available": True}
     assert (await run(tmp_path, fake, "set_territory_availability", args, answer)).is_error
     args["territories"] = ["SWE"]
-    declined = await run(tmp_path, fake, "set_territory_availability", args, Answerer("decline"))
-    assert declined.is_error and fake.writes() == [] and answer.messages == []
+    declined = await run(
+        tmp_path, fake, "set_territory_availability", args, FormAnswerer("decline")
+    )
+    assert declined.is_error and fake.writes() == [] and answer.forms == []
 
 
 async def test_create_flow_not_needed_to_make_unavailable(tmp_path: Path) -> None:
-    fake, answer = create_fake(), Answerer()
+    fake, answer = create_fake(), FormAnswerer()
     args = {"app_id": "1", "territories": ["SWE"], "available": False}
     result = await run(tmp_path, fake, "set_territory_availability", args, answer)
     assert "Nothing to change" in text_of(result)
-    assert fake.writes() == [] and answer.messages == []
+    assert fake.writes() == [] and answer.forms == []
 
 
 # ---------------------------------------------------------------- set_free_price
@@ -387,29 +374,31 @@ FREE_BODY = {
 }
 
 
-@pytest.mark.parametrize("mode", ERAS)
-async def test_set_free_price_accept_sends_one_post(tmp_path: Path, mode: str) -> None:
-    fake, answer = free_fake(), Answerer()
-    result = await run(tmp_path, fake, "set_free_price", {"app_id": "1"}, answer, mode)
+@pytest.mark.parametrize("protocol", PROTOCOLS)
+async def test_set_free_price_accept_sends_one_post(tmp_path: Path, protocol: str) -> None:
+    fake, answer = free_fake(), FormAnswerer()
+    result = await run(tmp_path, fake, "set_free_price", {"app_id": "1"}, answer, protocol)
     assert not result.is_error, text_of(result)
     assert [(w.method, w.path, w.body) for w in fake.writes()] == [
         ("POST", "/v1/appPriceSchedules", FREE_BODY)
     ]
     points = next(r for r in fake.seen if r.path == "/v1/apps/1/appPricePoints")
     assert points.params["filter[territory]"] == "SWE"
-    assert len(answer.messages) == 1
-    form = answer.messages[0]
+    assert len(answer.forms) == 1
+    form = answer.forms[0]
     assert "Make KörUppNu free in all countries (base: Sweden (SWE))" in form
     assert "no price set" in form.lower()
 
 
 @pytest.mark.parametrize("action", ["decline", "cancel"])
-@pytest.mark.parametrize("mode", ERAS)
+@pytest.mark.parametrize("protocol", PROTOCOLS)
 async def test_set_free_price_decline_or_cancel_sends_nothing(
-    tmp_path: Path, action: str, mode: str
+    tmp_path: Path, action: FormAction, protocol: str
 ) -> None:
     fake = free_fake()
-    result = await run(tmp_path, fake, "set_free_price", {"app_id": "1"}, Answerer(action), mode)
+    result = await run(
+        tmp_path, fake, "set_free_price", {"app_id": "1"}, FormAnswerer(action), protocol
+    )
     assert result.is_error and "Nothing was changed" in text_of(result)
     assert fake.writes() == []
 
@@ -417,29 +406,29 @@ async def test_set_free_price_decline_or_cancel_sends_nothing(
 async def test_set_free_price_other_base_territory_and_bad_code(tmp_path: Path) -> None:
     fake = free_fake()
     ok = await run(
-        tmp_path, fake, "set_free_price", {"app_id": "1", "base_territory": "usa"}, Answerer()
+        tmp_path, fake, "set_free_price", {"app_id": "1", "base_territory": "usa"}, FormAnswerer()
     )
     assert not ok.is_error
     assert fake.writes()[0].body["data"]["relationships"]["baseTerritory"]["data"]["id"] == "USA"
-    fake, answer = free_fake(), Answerer()
+    fake, answer = free_fake(), FormAnswerer()
     bad = await run(
         tmp_path, fake, "set_free_price", {"app_id": "1", "base_territory": "US"}, answer
     )
-    assert bad.is_error and answer.messages == [] and fake.writes() == []
+    assert bad.is_error and answer.forms == [] and fake.writes() == []
 
 
 async def test_set_free_price_refuses_to_replace_a_paid_price(tmp_path: Path) -> None:
-    fake, answer = free_fake(schedule="9.0"), Answerer()
+    fake, answer = free_fake(schedule="9.0"), FormAnswerer()
     result = await run(tmp_path, fake, "set_free_price", {"app_id": "1"}, answer)
     assert result.is_error and "9.0" in text_of(result)
-    assert answer.messages == [] and fake.writes() == []
+    assert answer.forms == [] and fake.writes() == []
 
 
 async def test_set_free_price_already_free_changes_nothing(tmp_path: Path) -> None:
-    fake, answer = free_fake(schedule="0.0"), Answerer()
+    fake, answer = free_fake(schedule="0.0"), FormAnswerer()
     result = await run(tmp_path, fake, "set_free_price", {"app_id": "1"}, answer)
     assert not result.is_error and "Nothing to change" in text_of(result)
-    assert answer.messages == [] and fake.writes() == []
+    assert answer.forms == [] and fake.writes() == []
 
 
 async def test_set_free_price_without_a_free_price_point_is_refused(tmp_path: Path) -> None:
@@ -449,6 +438,6 @@ async def test_set_free_price_without_a_free_price_point_is_refused(tmp_path: Pa
         "/v1/apps/1/appPricePoints",
         listing(resource("appPricePoints", "p", customerPrice="1.0")),
     )
-    answer = Answerer()
+    answer = FormAnswerer()
     result = await run(tmp_path, fake, "set_free_price", {"app_id": "1"}, answer)
-    assert result.is_error and answer.messages == [] and fake.writes() == []
+    assert result.is_error and answer.forms == [] and fake.writes() == []

@@ -41,6 +41,19 @@ def make_config(folder: Path, **overrides: object) -> Config:
     return Config(**values)  # type: ignore[arg-type]
 
 
+class FakeClock[Moment]:
+    """A clock a test can move by hand. Call it to read the time; set `.now` to change it.
+
+    `Moment` is whatever kind of time the code under test uses: seconds as a float, or a datetime.
+    """
+
+    def __init__(self, start: Moment) -> None:
+        self.now = start
+
+    def __call__(self) -> Moment:
+        return self.now
+
+
 def unwrap(value: str) -> str:
     """The text inside an untrusted-content block (drops the begin and end marker lines)."""
     assert value.startswith("[UNTRUSTED CONTENT ")

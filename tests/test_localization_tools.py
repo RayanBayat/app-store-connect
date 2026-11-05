@@ -5,30 +5,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import mcp_types as types
 import pytest
-from mcp.client.session import ClientRequestContext
 
 from app_store_connect.spec import ENDPOINTS_USED
 from app_store_connect.tools.locales import APP_STORE_LOCALES
 
-from .apple_fake import FakeApple, connected, one, resource, text_of
-
-ERAS = ["legacy", "2026-07-28"]
-
-
-class Answers:
-    def __init__(self, action: str = "accept") -> None:
-        self.action = action
-        self.forms: list[str] = []
-
-    async def __call__(
-        self, context: ClientRequestContext, params: types.ElicitRequestParams
-    ) -> types.ElicitResult:
-        self.forms.append(params.message)
-        if self.action != "accept":
-            return types.ElicitResult(action=self.action)  # type: ignore[arg-type]
-        return types.ElicitResult(action="accept", content={"approve": True})
+from .apple_fake import (
+    PROTOCOLS,
+    FakeApple,
+    FormAction,
+    FormAnswerer,
+    connected,
+    one,
+    resource,
+    text_of,
+)
 
 
 def apple() -> FakeApple:
@@ -107,28 +98,36 @@ def test_new_endpoints_are_listed() -> None:
     } <= ENDPOINTS_USED
 
 
-@pytest.mark.parametrize("mode", ERAS)
+@pytest.mark.parametrize("protocol", PROTOCOLS)
 @pytest.mark.parametrize(("tool", "args", "method", "path", "body"), CASES, ids=IDS)
 async def test_accept_sends_exactly_one_correct_request(
-    tmp_path: Path, mode: str, tool: str, args: dict[str, Any], method: str, path: str, body: Any
+    tmp_path: Path,
+    protocol: str,
+    tool: str,
+    args: dict[str, Any],
+    method: str,
+    path: str,
+    body: Any,
 ) -> None:
-    fake, answers = apple(), Answers()
-    async with connected(tmp_path, fake, allow_writes=True, elicit=answers, mode=mode) as c:
+    fake, answers = apple(), FormAnswerer()
+    async with connected(tmp_path, fake, allow_writes=True, elicit=answers, protocol=protocol) as c:
         result = await c.call_tool(tool, args)
     assert not result.is_error, text_of(result)
     assert [(w.method, w.path, w.body) for w in fake.writes()] == [(method, path, body)]
     assert len(answers.forms) == 1
 
 
-@pytest.mark.parametrize("mode", ERAS)
+@pytest.mark.parametrize("protocol", PROTOCOLS)
 @pytest.mark.parametrize("action", ["decline", "cancel"])
 @pytest.mark.parametrize(("tool", "args", "method", "path", "body"), CASES, ids=IDS)
 async def test_decline_and_cancel_send_nothing(
-    tmp_path: Path, mode: str, action: str, tool: str, args: dict[str, Any],
+    tmp_path: Path, protocol: str, action: FormAction, tool: str, args: dict[str, Any],
     method: str, path: str, body: Any,
 ) -> None:  # fmt: skip
     fake = apple()
-    async with connected(tmp_path, fake, allow_writes=True, elicit=Answers(action), mode=mode) as c:
+    async with connected(
+        tmp_path, fake, allow_writes=True, elicit=FormAnswerer(action), protocol=protocol
+    ) as c:
         result = await c.call_tool(tool, args)
     assert result.is_error and fake.writes() == []
 
@@ -142,7 +141,7 @@ async def test_tools_are_not_registered_when_writes_are_off(tmp_path: Path) -> N
 
 
 async def test_version_form_shows_every_field_in_full_escaped_with_counts(tmp_path: Path) -> None:
-    answers, fake = Answers(), apple()
+    answers, fake = FormAnswerer(), apple()
     args = {**VERSION_ARGS, "description": "Line one\nLine two‮" + "x" * 300}
     async with connected(tmp_path, fake, allow_writes=True, elicit=answers) as c:
         await c.call_tool("create_version_localization", args)
@@ -179,7 +178,7 @@ async def test_version_form_shows_every_field_in_full_escaped_with_counts(tmp_pa
 async def test_invalid_input_is_refused_before_any_form_or_request(
     tmp_path: Path, tool: str, args: dict[str, Any]
 ) -> None:
-    fake, answers = apple(), Answers()
+    fake, answers = apple(), FormAnswerer()
     async with connected(tmp_path, fake, allow_writes=True, elicit=answers) as c:
         result = await c.call_tool(tool, args)
     assert result.is_error
@@ -190,7 +189,7 @@ async def test_invalid_input_is_refused_before_any_form_or_request(
 
 
 async def test_primary_locale_form_explains_and_shows_old_and_new(tmp_path: Path) -> None:
-    answers = Answers()
+    answers = FormAnswerer()
     async with connected(tmp_path, apple(), allow_writes=True, elicit=answers) as c:
         await c.call_tool("update_app_primary_locale", {"app_id": "7", "locale": "sv"})
     form = answers.forms[0]
@@ -202,7 +201,7 @@ async def test_primary_locale_form_explains_and_shows_old_and_new(tmp_path: Path
 async def test_primary_locale_refused_without_app_info_localization_in_that_locale(
     tmp_path: Path,
 ) -> None:
-    fake, answers = apple(), Answers()
+    fake, answers = apple(), FormAnswerer()
     fake.on("GET", "/v1/appInfos/i1/appInfoLocalizations", {"data": [
         resource("appInfoLocalizations", "x", locale="en-US", name="N")]})  # fmt: skip
     async with connected(tmp_path, fake, allow_writes=True, elicit=answers) as c:
@@ -212,7 +211,7 @@ async def test_primary_locale_refused_without_app_info_localization_in_that_loca
 
 
 async def test_primary_locale_unchanged_needs_no_request(tmp_path: Path) -> None:
-    fake, answers = apple(), Answers()
+    fake, answers = apple(), FormAnswerer()
     async with connected(tmp_path, fake, allow_writes=True, elicit=answers) as c:
         result = await c.call_tool("update_app_primary_locale", {"app_id": "7", "locale": "en-US"})
     assert "already" in text_of(result)
@@ -236,7 +235,7 @@ async def test_update_tools_take_snake_case_arguments_and_send_apple_attribute_n
     old_info = resource("appInfoLocalizations", "i1", locale="sv", privacyPolicyUrl="https://old")
     fake.on("GET", "/v1/appInfoLocalizations/i1", one(old_info))
     fake.on("PATCH", "/v1/appInfoLocalizations/i1", one(old_info))
-    async with connected(tmp_path, fake, allow_writes=True, elicit=Answers()) as c:
+    async with connected(tmp_path, fake, allow_writes=True, elicit=FormAnswerer()) as c:
         await c.call_tool(
             "update_version_localization",
             {"localization_id": "l1", "whats_new": "New", "support_url": "https://new"},

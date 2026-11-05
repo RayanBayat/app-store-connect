@@ -5,16 +5,23 @@ from __future__ import annotations
 from datetime import timedelta
 from pathlib import Path
 
-import mcp_types as types
 import pytest
 from mcp import Client
-from mcp.client.session import ClientRequestContext, ElicitationFnT
 
 from app_store_connect.maintenance_record import load_record, stamp_record
 from app_store_connect.server import AppServer, create_app, snapshot_tool_names
 from app_store_connect.spec import APPLE_API_SPEC_VERSION
 
-from .apple_fake import FakeApple, connected, listing, resource, text_of
+from .apple_fake import (
+    OLD_PROTOCOL,
+    FakeApple,
+    FormAction,
+    FormAnswerer,
+    connected,
+    listing,
+    resource,
+    text_of,
+)
 from .conftest import NOW
 from .helpers import write_test_key
 
@@ -71,24 +78,15 @@ def test_no_raw_endpoint_or_login_tool_exists() -> None:
     assert not {"toolsets", "web_login", "asc_api_request"} & names
 
 
-def answer(result: types.ElicitResult) -> ElicitationFnT:
-    async def callback(
-        context: ClientRequestContext, params: types.ElicitRequestParams
-    ) -> types.ElicitResult:
-        assert "Only confirm if you read" in params.message
-        return result
-
-    return callback
-
-
-async def test_confirm_review_stamps_only_on_accept_with_read_true(tmp_path: Path) -> None:
-    accept = answer(types.ElicitResult(action="accept", content={"read": True}))
+async def test_confirm_review_stamps_only_on_accept(tmp_path: Path) -> None:
+    accept = FormAnswerer()
     fake = apps_fake()
     async with connected(tmp_path, fake, fresh_review=False, elicit=accept) as client:
         await client.call_tool("maintenance_report", {})
         result = await client.call_tool("maintenance_confirm_review", {"summary": "all fine"})
         assert not result.is_error
         assert not (await client.call_tool("list_apps", {})).is_error  # the gate reopened
+    assert "Only confirm if you read" in accept.forms[0]
     review = load_record()
     assert review is not None
     assert (review.outcome, review.spec_version) == ("all fine", APPLE_API_SPEC_VERSION)
@@ -96,17 +94,11 @@ async def test_confirm_review_stamps_only_on_accept_with_read_true(tmp_path: Pat
     assert "upload_screenshot" in review.tools  # the snapshot covers write tools too
 
 
-@pytest.mark.parametrize(
-    "reply",
-    [
-        types.ElicitResult(action="decline"),
-        types.ElicitResult(action="cancel"),
-    ],
-)
-async def test_confirm_review_does_not_stamp_otherwise(
-    tmp_path: Path, reply: types.ElicitResult
-) -> None:
-    async with connected(tmp_path, apps_fake(), fresh_review=False, elicit=answer(reply)) as client:
+@pytest.mark.parametrize("action", ["decline", "cancel"])
+async def test_confirm_review_does_not_stamp_otherwise(tmp_path: Path, action: FormAction) -> None:
+    async with connected(
+        tmp_path, apps_fake(), fresh_review=False, elicit=FormAnswerer(action)
+    ) as client:
         await client.call_tool("maintenance_report", {})
         result = await client.call_tool("maintenance_confirm_review", {"summary": "ok"})
     assert result.is_error
@@ -132,7 +124,7 @@ async def test_confirm_review_rejects_empty_summary(tmp_path: Path) -> None:
 
 async def test_degraded_mode_returns_startup_error_for_every_call() -> None:
     app = AppServer(None, startup_error="app-store-connect cannot start: ASC_KEY_ID is not set")
-    async with Client(app.build_server(), mode="legacy", cache=None) as client:
+    async with Client(app.build_server(), mode=OLD_PROTOCOL, cache=None) as client:
         names = {t.name for t in (await client.list_tools()).tools}
         assert names == {"maintenance_status", "maintenance_report", "maintenance_confirm_review"}
         for tool in ("list_apps", "maintenance_status", "submit_for_app_review"):
