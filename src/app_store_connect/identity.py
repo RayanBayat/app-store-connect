@@ -13,10 +13,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from importlib import metadata
+from typing import Final
 
 from app_store_connect import APP_NAME, __version__
 
-SHORT_COMMIT: int = 12
+SHORT_COMMIT: Final = 12
 
 
 @dataclass(frozen=True, slots=True)

@@ -84,9 +84,12 @@ def test_spec_may_redirect_within_developer_apple_com_only() -> None:
 
 @pytest.mark.parametrize(
     "location",
-    ["https://evil.example/spec.zip", "https://developer.apple.com.evil.example/x",
-     "http://developer.apple.com/spec.zip"],
-)  # fmt: skip
+    [
+        "https://evil.example/spec.zip",
+        "https://developer.apple.com.evil.example/x",
+        "http://developer.apple.com/spec.zip",
+    ],
+)
 def test_spec_redirect_elsewhere_is_refused(location: str) -> None:
     hits: list[str] = []
     with pytest.raises(report.ReportError, match="redirect"):

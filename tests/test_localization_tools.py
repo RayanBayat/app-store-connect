@@ -83,10 +83,22 @@ INFO_BODY = {
 PRIMARY_BODY = {"data": {"type": "apps", "id": "7", "attributes": {"primaryLocale": "sv"}}}
 
 CASES = [
-    ("create_version_localization", VERSION_ARGS, "POST", "/v1/appStoreVersionLocalizations", VERSION_BODY),
+    (
+        "create_version_localization",
+        VERSION_ARGS,
+        "POST",
+        "/v1/appStoreVersionLocalizations",
+        VERSION_BODY,
+    ),
     ("create_app_info_localization", INFO_ARGS, "POST", "/v1/appInfoLocalizations", INFO_BODY),
-    ("update_app_primary_locale", {"app_id": "7", "locale": "sv"}, "PATCH", "/v1/apps/7", PRIMARY_BODY),
-]  # fmt: skip
+    (
+        "update_app_primary_locale",
+        {"app_id": "7", "locale": "sv"},
+        "PATCH",
+        "/v1/apps/7",
+        PRIMARY_BODY,
+    ),
+]
 IDS = [c[0] for c in CASES]
 
 
@@ -121,9 +133,15 @@ async def test_accept_sends_exactly_one_correct_request(
 @pytest.mark.parametrize("action", ["decline", "cancel"])
 @pytest.mark.parametrize(("tool", "args", "method", "path", "body"), CASES, ids=IDS)
 async def test_decline_and_cancel_send_nothing(
-    tmp_path: Path, protocol: str, action: FormAction, tool: str, args: dict[str, Any],
-    method: str, path: str, body: Any,
-) -> None:  # fmt: skip
+    tmp_path: Path,
+    protocol: str,
+    action: FormAction,
+    tool: str,
+    args: dict[str, Any],
+    method: str,
+    path: str,
+    body: Any,
+) -> None:
     fake = apple()
     async with connected(
         tmp_path, fake, allow_writes=True, elicit=FormAnswerer(action), protocol=protocol
@@ -202,8 +220,11 @@ async def test_primary_locale_refused_without_app_info_localization_in_that_loca
     tmp_path: Path,
 ) -> None:
     fake, answers = apple(), FormAnswerer()
-    fake.on("GET", "/v1/appInfos/i1/appInfoLocalizations", {"data": [
-        resource("appInfoLocalizations", "x", locale="en-US", name="N")]})  # fmt: skip
+    fake.on(
+        "GET",
+        "/v1/appInfos/i1/appInfoLocalizations",
+        {"data": [resource("appInfoLocalizations", "x", locale="en-US", name="N")]},
+    )
     async with connected(tmp_path, fake, allow_writes=True, elicit=answers) as c:
         result = await c.call_tool("update_app_primary_locale", {"app_id": "7", "locale": "sv"})
     assert result.is_error and "app info localization" in text_of(result)

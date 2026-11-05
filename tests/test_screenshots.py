@@ -28,10 +28,21 @@ def make_fake(size: int) -> FakeApple:
         one(resource("appScreenshotSets", "s1", screenshotDisplayType="APP_IPHONE_67")),
     )
     ops = [
-        {"method": "PUT", "url": f"{PRESIGNED}1", "offset": 0, "length": 60,
-         "requestHeaders": [{"name": "Content-Type", "value": "image/png"}]},
-        {"method": "PUT", "url": f"{PRESIGNED}2", "offset": 60, "length": size - 60, "requestHeaders": []},
-    ]  # fmt: skip
+        {
+            "method": "PUT",
+            "url": f"{PRESIGNED}1",
+            "offset": 0,
+            "length": 60,
+            "requestHeaders": [{"name": "Content-Type", "value": "image/png"}],
+        },
+        {
+            "method": "PUT",
+            "url": f"{PRESIGNED}2",
+            "offset": 60,
+            "length": size - 60,
+            "requestHeaders": [],
+        },
+    ]
     fake.on(
         "POST",
         "/v1/appScreenshots",
@@ -331,10 +342,23 @@ GOOD = "https://store-001.blobstore.apple.com/part"
         [part(GOOD + "1", 0, 0)],
     ],
     ids=[
-        "poc-127-post", "ip-v4", "ip-v6", "suffix-trick", "no-dot-boundary", "port", "http",
-        "post", "get", "overlap", "out-of-range", "short-total", "duplicate", "negative", "empty",
+        "poc-127-post",
+        "ip-v4",
+        "ip-v6",
+        "suffix-trick",
+        "no-dot-boundary",
+        "port",
+        "http",
+        "post",
+        "get",
+        "overlap",
+        "out-of-range",
+        "short-total",
+        "duplicate",
+        "negative",
+        "empty",
     ],
-)  # fmt: skip
+)
 async def test_bad_upload_instructions_send_no_part(
     tmp_path: Path, root: Path, ops: list[dict[str, Any]]
 ) -> None:

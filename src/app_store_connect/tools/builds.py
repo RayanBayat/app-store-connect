@@ -22,7 +22,7 @@ from app_store_connect.tools.base import (
 from app_store_connect.tools.confirm import confirm_change
 from app_store_connect.tools.lookups import group_name
 
-BUILD_FIELDS = (
+BUILD_FIELDS: Final = (
     "version",
     "uploadedDate",
     "expirationDate",

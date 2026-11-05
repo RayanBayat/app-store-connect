@@ -46,11 +46,25 @@ def loc_fake(old: str = "old description") -> FakeApple:
         "/v1/appStoreVersionLocalizations/L1",
         one(resource(VERSION_LOCALIZATION, "L1", description="new description")),
     )
-    return fake  # fmt: skip
+    return fake
 
 
 def accepted() -> types.InputResponses:
     return {"confirm": types.ElicitResult(action="accept")}
+
+
+def state_of(result: types.InputRequiredResult) -> str:
+    """The sealed state the server sent with its "input required" result."""
+    assert result.request_state is not None
+    return result.request_state
+
+
+def form_of(result: types.InputRequiredResult) -> types.ElicitRequest:
+    """The confirmation form inside an "input required" result."""
+    assert result.input_requests is not None
+    request = result.input_requests["confirm"]
+    assert isinstance(request, types.ElicitRequest)
+    return request
 
 
 async def first_round(
@@ -145,11 +159,11 @@ async def test_first_round_returns_the_full_form_and_a_sealed_opaque_state(tmp_p
         tmp_path, fake, allow_writes=True, elicit=FormAnswerer(), protocol=NEW_PROTOCOL
     ) as c:
         first = await first_round(c, {**ARGS, "description": long_value})
-    request = first.input_requests["confirm"]  # type: ignore[index]
-    assert isinstance(request, types.ElicitRequest)
+    request = form_of(first)
     assert long_value in request.params.message and "404 characters" in request.params.message
-    assert first.request_state.startswith("v1.")  # type: ignore[union-attr]
-    assert "TAIL" not in first.request_state and "description" not in first.request_state  # type: ignore[operator]
+    state = state_of(first)
+    assert state.startswith("v1.")
+    assert "TAIL" not in state and "description" not in state
     assert fake.writes() == []
 
 
@@ -162,10 +176,10 @@ async def test_manual_retry_with_accept_writes_once_and_a_replay_is_refused(
     ) as c:
         first = await first_round(c)
         retry = await c.session.call_tool(
-            TOOL, ARGS, input_responses=accepted(), request_state=first.request_state
+            TOOL, ARGS, input_responses=accepted(), request_state=state_of(first)
         )
         replay = await c.session.call_tool(
-            TOOL, ARGS, input_responses=accepted(), request_state=first.request_state
+            TOOL, ARGS, input_responses=accepted(), request_state=state_of(first)
         )
     assert not retry.is_error, text_of(retry)
     assert replay.is_error and "already used" in text_of(replay)
@@ -178,8 +192,7 @@ async def test_tampered_state_is_refused(tmp_path: Path) -> None:
         tmp_path, fake, allow_writes=True, elicit=FormAnswerer(), protocol=NEW_PROTOCOL
     ) as c:
         first = await first_round(c)
-        state = first.request_state
-        assert state is not None
+        state = state_of(first)
         flipped = state[:-3] + ("AAA" if state[-3:] != "AAA" else "BBB")
         with pytest.raises(MCPError):
             await c.session.call_tool(TOOL, ARGS, input_responses=accepted(), request_state=flipped)
@@ -200,7 +213,7 @@ async def test_expired_state_is_refused(tmp_path: Path, monkeypatch: pytest.Monk
         monkeypatch.setattr("mcp.server.request_state.time.time", lambda: real() + 601)
         with pytest.raises(MCPError):
             await c.session.call_tool(
-                TOOL, ARGS, input_responses=accepted(), request_state=first.request_state
+                TOOL, ARGS, input_responses=accepted(), request_state=state_of(first)
             )
     assert fake.writes() == []
 
@@ -226,7 +239,7 @@ async def test_changed_arguments_on_retry_are_refused(tmp_path: Path) -> None:
                 TOOL,
                 {**ARGS, "description": "something the human never saw"},
                 input_responses=accepted(),
-                request_state=first.request_state,
+                request_state=state_of(first),
             )
     assert fake.writes() == []
 
@@ -242,7 +255,7 @@ async def test_state_from_another_tool_call_is_refused(tmp_path: Path) -> None:
                 "update_app_info_localization",
                 {"localization_id": "L1", "name": "x"},
                 input_responses=accepted(),
-                request_state=first.request_state,
+                request_state=state_of(first),
             )
     assert fake.writes() == []
 
@@ -266,7 +279,7 @@ async def test_bad_or_missing_answers_send_nothing(
     ) as c:
         first = await first_round(c)
         result = await c.session.call_tool(
-            TOOL, ARGS, input_responses=responses, request_state=first.request_state
+            TOOL, ARGS, input_responses=responses, request_state=state_of(first)
         )
     assert isinstance(result, types.CallToolResult) and result.is_error
     assert fake.writes() == []
@@ -300,16 +313,15 @@ async def test_old_value_changed_between_form_and_retry_shows_a_fresh_form(
             TOOL,
             ARGS,
             input_responses=accepted(),
-            request_state=first.request_state,
+            request_state=state_of(first),
             allow_input_required=True,
         )
         assert fake.writes() == []  # the first approval does not cover the new situation
         assert isinstance(again, types.InputRequiredResult)
-        request = again.input_requests["confirm"]  # type: ignore[index]
-        assert isinstance(request, types.ElicitRequest)
+        request = form_of(again)
         assert "second old value" in request.params.message
         final = await c.session.call_tool(
-            TOOL, ARGS, input_responses=accepted(), request_state=again.request_state
+            TOOL, ARGS, input_responses=accepted(), request_state=state_of(again)
         )
     assert not final.is_error, text_of(final)
     assert len(fake.writes()) == 1
@@ -322,8 +334,15 @@ async def test_sdk_client_loop_handles_a_changed_old_value_by_asking_again(
 
     def change_on_first_form(count: int) -> None:
         if count == 1:
-            fake.on("GET", "/v1/appStoreVersionLocalizations/L1",
-                    one(resource(VERSION_LOCALIZATION, "L1", locale="en-US", description="second old value")))  # fmt: skip
+            fake.on(
+                "GET",
+                "/v1/appStoreVersionLocalizations/L1",
+                one(
+                    resource(
+                        VERSION_LOCALIZATION, "L1", locale="en-US", description="second old value"
+                    )
+                ),
+            )
 
     answers.on_form = change_on_first_form
     async with connected(
@@ -391,19 +410,19 @@ async def test_review_state_replay_and_changed_summary_are_refused(tmp_path: Pat
                 "maintenance_confirm_review",
                 {"summary": "different"},
                 input_responses=ok,
-                request_state=first.request_state,
+                request_state=state_of(first),
             )
         done = await c.session.call_tool(
             "maintenance_confirm_review",
             {"summary": "fine"},
             input_responses=ok,
-            request_state=first.request_state,
+            request_state=state_of(first),
         )
         replay = await c.session.call_tool(
             "maintenance_confirm_review",
             {"summary": "fine"},
             input_responses=ok,
-            request_state=first.request_state,
+            request_state=state_of(first),
         )
     assert not done.is_error and replay.is_error
 
@@ -421,13 +440,17 @@ class CapSession:
     [
         (types.ElicitationCapability(form=types.FormElicitationCapability()), False),
         (types.ElicitationCapability(), False),  # the older "elicitation: {}" means forms
-        (types.ElicitationCapability(form=types.FormElicitationCapability(),
-                                     url=types.UrlElicitationCapability()), False),
+        (
+            types.ElicitationCapability(
+                form=types.FormElicitationCapability(), url=types.UrlElicitationCapability()
+            ),
+            False,
+        ),
         (types.ElicitationCapability(url=types.UrlElicitationCapability()), True),
         (None, True),
     ],
     ids=["form", "empty", "form-and-url", "url-only", "none"],
-)  # fmt: skip
+)
 def test_capability_check_accepts_every_way_of_saying_forms(
     elicitation: types.ElicitationCapability | None, refused: bool
 ) -> None:

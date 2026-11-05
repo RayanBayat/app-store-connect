@@ -21,8 +21,8 @@ from app_store_connect.tools.base import (
 from app_store_connect.tools.confirm import change_line, confirm_change
 from app_store_connect.tools.locales import valid_locale
 
-WRAPPED = ("name",)  # an app name is typed by a person
-APP_FIELDS = ("name", "bundleId", "sku", "primaryLocale")
+WRAPPED: Final = ("name",)  # an app name is typed by a person
+APP_FIELDS: Final = ("name", "bundleId", "sku", "primaryLocale")
 
 
 async def list_apps(ctx: ToolContext, args: dict[str, Any]) -> str:

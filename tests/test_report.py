@@ -19,8 +19,14 @@ from .report_fake import feed, make_inputs, make_spec, report_text
 
 def test_report_has_all_sections_and_apple_link() -> None:
     text = report_text(make_inputs())
-    for heading in ("## Apple API spec", "### Endpoints we use", "## Apple API release notes",
-                    "## Our dependencies", "## Tool changes", "## What to decide"):  # fmt: skip
+    for heading in (
+        "## Apple API spec",
+        "### Endpoints we use",
+        "## Apple API release notes",
+        "## Our dependencies",
+        "## Tool changes",
+        "## What to decide",
+    ):
         assert heading in text
     assert "https://developer.apple.com/documentation/appstoreconnectapi/" in text
 
@@ -91,8 +97,18 @@ def test_feed_problems_are_not_checked_not_ok() -> None:
         client = httpx.Client(transport=httpx.MockTransport(lambda _r, r=response: r))
         with pytest.raises(report.ReportError, match="PyPI lookup"):
             report.latest_on_pypi(client, "httpx")
-    broken = replace(make_inputs(), client=httpx.Client(transport=httpx.MockTransport(
-        lambda r: httpx.Response(500) if r.url.host == "pypi.org" else httpx.Response(200, json={"results": [{}, {}, {}]}))))  # fmt: skip
+    broken = replace(
+        make_inputs(),
+        client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda r: (
+                    httpx.Response(500)
+                    if r.url.host == "pypi.org"
+                    else httpx.Response(200, json={"results": [{}, {}, {}]})
+                )
+            )
+        ),
+    )
     assert "NOT CHECKED" in report_text(broken)
 
 

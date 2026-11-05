@@ -74,9 +74,12 @@ async def test_pagination_follows_next_on_same_host(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "evil",
-    ["https://evil.example/v1/apps?cursor=2", "http://api.appstoreconnect.apple.com/v1/apps",
-     "https://api.appstoreconnect.apple.com.evil.example/x"],
-)  # fmt: skip
+    [
+        "https://evil.example/v1/apps?cursor=2",
+        "http://api.appstoreconnect.apple.com/v1/apps",
+        "https://api.appstoreconnect.apple.com.evil.example/x",
+    ],
+)
 async def test_pagination_to_another_host_is_refused_and_never_requested(
     tmp_path: Path, evil: str
 ) -> None:

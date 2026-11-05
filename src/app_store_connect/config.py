@@ -66,7 +66,7 @@ def mask_key_id(key_id: str) -> str:
 
 
 # Apple names downloaded keys AuthKey_<KEY ID>.p8, so the file name contains the key ID.
-_KEY_FILE_NAME = re.compile(r"(AuthKey_)([A-Za-z0-9]+)([A-Za-z0-9]{4})(\.p8)")
+_KEY_FILE_NAME: Final = re.compile(r"(AuthKey_)([A-Za-z0-9]+)([A-Za-z0-9]{4})(\.p8)")
 
 
 def masked_path(path: Path) -> str:

@@ -227,7 +227,7 @@ async def update_age_rating(ctx: ToolContext, args: dict[str, Any]) -> str:
     return "Updated: " + to_text(changed)
 
 
-_ANSWERS_HELP = (
+_ANSWERS_HELP: Final = (
     "Object of question -> answer. Yes/no questions take true or false: "
     + ", ".join(BOOLEAN_QUESTIONS)
     + ". Frequency questions take NONE, INFREQUENT_OR_MILD or FREQUENT_OR_INTENSE: "

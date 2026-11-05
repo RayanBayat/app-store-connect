@@ -9,7 +9,7 @@ from pathlib import Path
 from app_store_connect.spec import ENDPOINTS_USED
 
 TOOLS_DIR = Path(__file__).parent.parent / "src" / "app_store_connect" / "tools"
-PATH_PATTERN = re.compile(r"/v1/\S*")
+PATH_PATTERN = re.compile(r"/v[12]/\S*")
 
 
 def paths_in_code() -> set[str]:
@@ -71,6 +71,6 @@ def test_no_stale_entries_in_endpoints_used() -> None:
     assert calls_in_code() >= ENDPOINTS_USED, sorted(ENDPOINTS_USED - calls_in_code())
 
 
-def test_write_methods_only_appear_in_write_tool_modules() -> None:
+def test_only_known_write_methods_are_used() -> None:
     writers = {m for m, _ in calls_in_code() if m != "GET"}
     assert writers <= {"POST", "PATCH", "DELETE"}

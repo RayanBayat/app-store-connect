@@ -30,7 +30,7 @@ def write_raw(state: Path, days_ago: int, tools: list[str] | None = None) -> Non
     data = {
         "schema": 1,
         "reviewed_at": (NOW - timedelta(days=days_ago)).isoformat(),
-        "spec_version": "0.22.0",
+        "spec_version": "4.5.1",
         "outcome": "ok",
         "tools": tools or [],
         "history": [],
@@ -97,14 +97,14 @@ def test_small_clock_difference_is_tolerated(state: Path) -> None:
 
 
 def test_stamp_writes_strict_permissions_and_expected_fields(state: Path) -> None:
-    stamp_record(NOW, "0.22.0", "all good", ["b", "a"])
+    stamp_record(NOW, "4.5.1", "all good", ["b", "a"])
     path = state / "review.json"
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert stat.S_IMODE(state.stat().st_mode) == 0o700
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["schema"] == 1
     assert data["reviewed_at"] == "2026-11-03T12:00:00+01:00"
-    assert data["spec_version"] == "0.22.0"
+    assert data["spec_version"] == "4.5.1"
     assert data["tools"] == ["a", "b"]
     assert data["history"] == []
     assert [p.name for p in state.iterdir()] == ["review.json"]
@@ -119,7 +119,7 @@ def test_stamp_is_atomic_via_rename(state: Path, monkeypatch: pytest.MonkeyPatch
         return real(self, target)
 
     monkeypatch.setattr(Path, "replace", spy)
-    stamp_record(NOW, "1", "x", None)
+    stamp_record(NOW, "4.5.1", "x", None)
     assert len(calls) == 1
     assert calls[0][1] == state / "review.json"
 
@@ -130,7 +130,7 @@ def test_failed_write_leaves_no_temp_file(state: Path, monkeypatch: pytest.Monke
 
     monkeypatch.setattr(Path, "replace", boom)
     with pytest.raises(OSError, match="disk full"):
-        stamp_record(NOW, "1", "x", None)
+        stamp_record(NOW, "4.5.1", "x", None)
     assert list(state.iterdir()) == []
 
 
@@ -140,13 +140,13 @@ def test_stamp_without_tools_keeps_previous_snapshot(state: Path) -> None:
     loaded = load_record()
     assert isinstance(loaded, MaintenanceRecord)
     assert loaded.tools == ("a", "b")
-    assert loaded.history[0].spec_version == "0.22.0"
+    assert loaded.history[0].spec_version == "4.5.1"
 
 
 def test_history_is_capped_at_12_newest_first(state: Path) -> None:
     for i in range(15):
-        stamp_record(NOW, f"v{i}", "x", None)
+        stamp_record(NOW, f"4.5.{i}", "x", None)
     loaded = load_record()
     assert loaded is not None
     assert len(loaded.history) == maintenance_record.HISTORY_LIMIT == 12
-    assert loaded.history[0].spec_version == "v13"
+    assert loaded.history[0].spec_version == "4.5.13"

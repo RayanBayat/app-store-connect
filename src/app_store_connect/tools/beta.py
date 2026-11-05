@@ -25,10 +25,10 @@ from app_store_connect.tools.confirm import confirm_change
 from app_store_connect.tools.lookups import group_name
 
 EMAIL_PATTERN: Final = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
-GROUP_FIELDS = ("name", "isInternalGroup", "publicLinkEnabled", "createdDate")
-GROUP_WRAPPED = ("name",)
-TESTER_WRAPPED = ("firstName", "lastName", "email")
-TESTER_FIELDS = ("firstName", "lastName", "email", "inviteType", "state")
+GROUP_FIELDS: Final = ("name", "isInternalGroup", "publicLinkEnabled", "createdDate")
+GROUP_WRAPPED: Final = ("name",)
+TESTER_WRAPPED: Final = ("firstName", "lastName", "email")
+TESTER_FIELDS: Final = ("firstName", "lastName", "email", "inviteType", "state")
 
 
 async def list_beta_groups(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -61,8 +61,11 @@ async def add_beta_tester(ctx: ToolContext, args: dict[str, Any]) -> str:
         raise ToolInputError(f"{email!r} does not look like an email address.")
     first, last = optional_str(args, "first_name"), optional_str(args, "last_name")
     name = await group_name(ctx, group_id)
-    lines = [f"Tester email: {email}", f"Name: {first or ''} {last or ''}".strip(),
-             f"Beta group: {name} ({group_id})"]  # fmt: skip
+    lines = [
+        f"Tester email: {email}",
+        f"Name: {first or ''} {last or ''}".strip(),
+        f"Beta group: {name} ({group_id})",
+    ]
     await confirm_change(ctx, "Add a TestFlight tester to a beta group", lines)
     attributes = {"email": email}
     if first:

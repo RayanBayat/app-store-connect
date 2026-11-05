@@ -33,9 +33,12 @@ def territory_availability(
     code: str, available: bool, statuses: tuple[str, ...] = (), **extra: Any
 ) -> dict[str, Any]:
     item = resource(
-        "territoryAvailabilities", f"ta-{code}", available=available,
-        contentStatuses=list(statuses), **extra,
-    )  # fmt: skip
+        "territoryAvailabilities",
+        f"ta-{code}",
+        available=available,
+        contentStatuses=list(statuses),
+        **extra,
+    )
     item["relationships"] = {"territory": {"data": {"type": "territories", "id": code}}}
     return item
 
@@ -142,8 +145,11 @@ async def test_read_price_free_and_paid(tmp_path: Path) -> None:
     price = (await read(tmp_path, fake))["price"]
     assert price["baseTerritory"] == "SWE"
     assert price["currentManualPrice"] == {
-        "territory": "SWE", "customerPrice": "0.0", "currency": "SEK", "startDate": None,
-    }  # fmt: skip
+        "territory": "SWE",
+        "customerPrice": "0.0",
+        "currency": "SEK",
+        "startDate": None,
+    }
     assert "free" in price["summary"].lower()
     fake = availability_fake(territory_availability("SWE", True))
     add_price(fake, "9.0")

@@ -81,8 +81,14 @@ def test_docs_say_the_protections_assume_the_agent_cannot_run_commands() -> None
     assert "cannot run arbitrary commands as your" in read("docs/security.md")
     assert "any command on your computer as you" in read("README.md")
     security = " ".join(read("docs/security.md").split())
-    for needle in ("Read(~/.config/app-store-connect/**)", "Edit(~/.local/state/app-store-connect/**)",
-                   "bypass", "hook", "separate OS user", "sandbox"):  # fmt: skip
+    for needle in (
+        "Read(~/.config/app-store-connect/**)",
+        "Edit(~/.local/state/app-store-connect/**)",
+        "bypass",
+        "hook",
+        "separate OS user",
+        "sandbox",
+    ):
         assert needle in security, needle
 
 

@@ -65,8 +65,11 @@ def test_compare_says_clearly_when_code_differs() -> None:
     running = CodeIdentity("0.2.0", "b" * 40)
     same = compare_with_review(running, running)
     assert "This is the code that was last reviewed" in " ".join(same)
-    for reviewed in (CodeIdentity("0.1.0", "b" * 40), CodeIdentity("0.2.0", "c" * 40),
-                     CodeIdentity("0.2.0", "")):  # fmt: skip
+    for reviewed in (
+        CodeIdentity("0.1.0", "b" * 40),
+        CodeIdentity("0.2.0", "c" * 40),
+        CodeIdentity("0.2.0", ""),
+    ):
         text = " ".join(compare_with_review(reviewed, running))
         assert "NOT the code that was last reviewed" in text
     assert "did not record" in " ".join(compare_with_review(None, running))

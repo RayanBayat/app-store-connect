@@ -12,6 +12,7 @@ import os
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Final
 
 from app_store_connect import APP_NAME, __version__
 from app_store_connect.auth import AuthError, TokenProvider
@@ -30,7 +31,7 @@ from app_store_connect.spec import APPLE_API_SPEC_VERSION
 
 ReportFn = Callable[[list[str]], str]
 Ask = Callable[[str], str]
-DEFAULT_OUTCOME = "Report read in a terminal."
+DEFAULT_OUTCOME: Final = "Report read in a terminal."
 
 
 def build_parser() -> argparse.ArgumentParser:

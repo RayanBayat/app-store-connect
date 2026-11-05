@@ -86,8 +86,14 @@ class ReportFacts:
     @property
     def not_checked(self) -> int:
         """How many parts of the report could not be checked."""
-        return sum(not ok for ok in (self.spec_checked, self.outdated is not None,
-                                     self.vulnerabilities is not None))  # fmt: skip
+        return sum(
+            not ok
+            for ok in (
+                self.spec_checked,
+                self.outdated is not None,
+                self.vulnerabilities is not None,
+            )
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -296,8 +302,8 @@ def is_outdated(installed: str, latest: str) -> bool:
     return version_tuple(latest) > version_tuple(installed)
 
 
-_FEED_TITLE = re.compile(r"<item>\s*<title>([^<]+)</title>")
-_STABLE_VERSION = re.compile(r"\d+(?:\.\d+)*(?:\.post\d+)?")
+_FEED_TITLE: Final = re.compile(r"<item>\s*<title>([^<]+)</title>")
+_STABLE_VERSION: Final = re.compile(r"\d+(?:\.\d+)*(?:\.post\d+)?")
 
 
 def latest_stable(feed: str) -> str | None:

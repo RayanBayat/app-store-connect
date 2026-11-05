@@ -83,8 +83,15 @@ async def call(tmp_path: Path, fake: FakeApple, tool: str, args: dict[str, Any])
 
 async def test_review_nickname_title_body_are_wrapped(tmp_path: Path) -> None:
     fake = FakeApple()
-    fake.on("GET", "/v1/apps/1/customerReviews", listing(
-        resource("customerReviews", "r1", rating=1, title="TT", body="BB", reviewerNickname="NN")))  # fmt: skip
+    fake.on(
+        "GET",
+        "/v1/apps/1/customerReviews",
+        listing(
+            resource(
+                "customerReviews", "r1", rating=1, title="TT", body="BB", reviewerNickname="NN"
+            )
+        ),
+    )
     out = (await call(tmp_path, fake, "list_customer_reviews", {"app_id": "1"}))[0]
     for key, text in (("reviewerNickname", "NN"), ("title", "TT"), ("body", "BB")):
         assert_wrapped(out[key], text)
@@ -92,8 +99,13 @@ async def test_review_nickname_title_body_are_wrapped(tmp_path: Path) -> None:
 
 async def test_tester_names_and_email_are_wrapped(tmp_path: Path) -> None:
     fake = FakeApple()
-    fake.on("GET", "/v1/betaTesters", listing(
-        resource("betaTesters", "t1", firstName="FN", lastName="LN", email="a@b.co", state="X")))  # fmt: skip
+    fake.on(
+        "GET",
+        "/v1/betaTesters",
+        listing(
+            resource("betaTesters", "t1", firstName="FN", lastName="LN", email="a@b.co", state="X")
+        ),
+    )
     out = (await call(tmp_path, fake, "list_beta_testers", {"beta_group_id": "g"}))[0]
     for key, text in (("firstName", "FN"), ("lastName", "LN"), ("email", "a@b.co")):
         assert_wrapped(out[key], text)
@@ -113,18 +125,36 @@ async def test_app_and_beta_group_names_are_wrapped(tmp_path: Path) -> None:
 async def test_all_store_text_is_wrapped_but_apple_enums_are_plain(tmp_path: Path) -> None:
     fake = FakeApple()
     fields = {
-        "description": "D", "keywords": "K", "whatsNew": "W", "promotionalText": "P",
-        "marketingUrl": "https://m.example", "supportUrl": "https://s.example",
-    }  # fmt: skip
-    fake.on("GET", "/v1/appStoreVersions/v1/appStoreVersionLocalizations", listing(
-        resource("appStoreVersionLocalizations", "l1", locale="en-US", **fields)))  # fmt: skip
+        "description": "D",
+        "keywords": "K",
+        "whatsNew": "W",
+        "promotionalText": "P",
+        "marketingUrl": "https://m.example",
+        "supportUrl": "https://s.example",
+    }
+    fake.on(
+        "GET",
+        "/v1/appStoreVersions/v1/appStoreVersionLocalizations",
+        listing(resource("appStoreVersionLocalizations", "l1", locale="en-US", **fields)),
+    )
     out = (await call(tmp_path, fake, "get_version_localizations", {"version_id": "v1"}))[0]
     for key, text in fields.items():
         assert_wrapped(out[key], text)
-    fake.on("GET", "/v1/apps/1/appInfos", listing(
-        resource("appInfos", "i1", state="READY")))  # fmt: skip
-    fake.on("GET", "/v1/appInfos/i1/appInfoLocalizations", listing(resource(
-        "appInfoLocalizations", "x1", locale="en-US", name="N", subtitle="S", privacyPolicyUrl="U")))  # fmt: skip
+    fake.on("GET", "/v1/apps/1/appInfos", listing(resource("appInfos", "i1", state="READY")))
+    fake.on(
+        "GET",
+        "/v1/appInfos/i1/appInfoLocalizations",
+        listing(
+            resource(
+                "appInfoLocalizations",
+                "x1",
+                locale="en-US",
+                name="N",
+                subtitle="S",
+                privacyPolicyUrl="U",
+            )
+        ),
+    )
     info = (await call(tmp_path, fake, "get_app_info_localizations", {"app_id": "1"}))[0]
     # Apple's own enums and IDs are not written by people: they come back plainly.
     assert info["attributes"]["state"] == "READY"
@@ -135,10 +165,16 @@ async def test_all_store_text_is_wrapped_but_apple_enums_are_plain(tmp_path: Pat
 
 async def test_screenshot_file_names_are_wrapped(tmp_path: Path) -> None:
     fake = FakeApple()
-    fake.on("GET", "/v1/appStoreVersionLocalizations/l1/appScreenshotSets", listing(
-        resource("appScreenshotSets", "s1", screenshotDisplayType="APP_IPHONE_67")))  # fmt: skip
-    fake.on("GET", "/v1/appScreenshotSets/s1/appScreenshots", listing(
-        resource("appScreenshots", "p1", fileName="evil name.png")))  # fmt: skip
+    fake.on(
+        "GET",
+        "/v1/appStoreVersionLocalizations/l1/appScreenshotSets",
+        listing(resource("appScreenshotSets", "s1", screenshotDisplayType="APP_IPHONE_67")),
+    )
+    fake.on(
+        "GET",
+        "/v1/appScreenshotSets/s1/appScreenshots",
+        listing(resource("appScreenshots", "p1", fileName="evil name.png")),
+    )
     out = await call(tmp_path, fake, "list_screenshot_sets", {"localization_id": "l1"})
     assert_wrapped(out[0]["screenshots"][0]["fileName"], "evil name.png")
 
@@ -146,8 +182,12 @@ async def test_screenshot_file_names_are_wrapped(tmp_path: Path) -> None:
 async def test_text_echoed_back_by_write_tools_is_wrapped(tmp_path: Path) -> None:
     fake = FakeApple()
     fake.on("GET", "/v1/betaGroups/g1", one(resource("betaGroups", "g1", name="GN")))
-    fake.on("POST", "/v1/betaTesters", one(resource(
-        "betaTesters", "t1", email="a@b.co", firstName="FN", lastName="LN")), 201)  # fmt: skip
+    fake.on(
+        "POST",
+        "/v1/betaTesters",
+        one(resource("betaTesters", "t1", email="a@b.co", firstName="FN", lastName="LN")),
+        201,
+    )
 
     async with connected(tmp_path, fake, allow_writes=True, elicit=FormAnswerer()) as client:
         result = await client.call_tool(

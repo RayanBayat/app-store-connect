@@ -19,6 +19,8 @@ How to add a tool:
 
 from __future__ import annotations
 
+from typing import Final
+
 from app_store_connect.tools import (
     agerating,
     app_review,
@@ -34,7 +36,7 @@ from app_store_connect.tools import (
 )
 from app_store_connect.tools.base import ToolSpec
 
-_MODULES = (
+_MODULES: Final = (
     apps,
     versions,
     builds,
