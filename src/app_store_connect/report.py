@@ -420,8 +420,12 @@ def code_section(inputs: ReportInputs) -> list[str]:
     ]
 
 
-def build_report_with_facts(inputs: ReportInputs) -> ReportResult:
-    """Return the full report as markdown, plus the figures the confirmation form repeats."""
+def build_report(inputs: ReportInputs) -> ReportResult:
+    """Build the whole report from `inputs` (which hold everything it reads, so tests can fake it).
+
+    Returns the markdown text and the figures that the confirmation form repeats. Use
+    `maintenance.make_report` instead to build the real report with live network access.
+    """
     lines = [f"# App Store Connect maintenance report ({inputs.now.date().isoformat()})", ""]
     lines += code_section(inputs)
     missing = deprecated = 0
@@ -443,8 +447,3 @@ def build_report_with_facts(inputs: ReportInputs) -> ReportResult:
     lines += decide_section()
     facts = ReportFacts(spec_checked, missing, deprecated, outdated, vulns)
     return ReportResult("\n".join(lines) + "\n", facts)
-
-
-def build_report(inputs: ReportInputs) -> str:
-    """Return the full report as markdown."""
-    return build_report_with_facts(inputs).text

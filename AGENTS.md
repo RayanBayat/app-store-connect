@@ -50,8 +50,8 @@ easy for a **beginner computer science student** to read, learn from and debug.
 uv sync
 uv run ruff check && uv run ruff format --check
 uv run mypy
-uv run pytest -m "not network"     # must pass
-uv run pytest -m network           # downloads Apple's public spec; must pass before bumping it
+uv run pytest -m "not network"     # must pass before every commit
+uv run pytest -m network           # downloads Apple's public spec; run before a spec bump and before a release
 uv lock --upgrade                  # refresh dependencies
 ```
 

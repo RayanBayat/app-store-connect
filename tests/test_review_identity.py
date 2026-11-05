@@ -97,7 +97,7 @@ def test_report_and_status_show_the_difference(monkeypatch: pytest.MonkeyPatch) 
 
 
 def report_text(review: MaintenanceRecord | None) -> str:
-    return build_report(replace(make_inputs(), review=review))
+    return build_report(replace(make_inputs(), review=review)).text
 
 
 # ---------------------------------------------------------------- a recent report is required

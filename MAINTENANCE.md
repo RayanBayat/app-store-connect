@@ -71,10 +71,13 @@ again, and commit. A test fails if a pin and the lock file disagree.
 
 Users who pin a tag only get what you release, so release deliberately:
 
-1. Make sure `main` is green: all five checks below.
+1. Make sure `main` is green: all five checks in "The five checks" below, including
+   the network test (check 5).
 2. Run `uv run app-store-connect review` and read the report (see above).
 3. Bump `version` in `pyproject.toml` (for example `0.2.0` to `0.2.1`) and add a `CHANGELOG.md`
-   entry. Update the tag in the README install command (`@v0.2.0`).
+   entry. Update the tag in the README install command (`@v0.2.0`). The tests read the version
+   from `pyproject.toml`, so nothing else needs editing; they fail if the README tag or the
+   changelog entry is missing.
 4. Run `uv lock` (it records the new project version) and commit:
    `chore(release): v0.2.1`.
 5. Tag the commit and push the tag: `git tag v0.2.1 && git push origin main v0.2.1`.
@@ -92,11 +95,21 @@ Users who pin a tag only get what you release, so release deliberately:
 - Every new Apple call must be added to `ENDPOINTS_USED` and be verified against the spec first.
 - Never log or return tokens, keys or the issuer ID.
 
-## Checks before every commit
+## The five checks
+
+Run checks 1 to 4 before every commit:
 
 ```
-uv run ruff check && uv run ruff format --check
-uv run mypy
-uv run pytest -m "not network"
-uv run pytest -m network
+uv run ruff check                    # 1. lint
+uv run ruff format --check           # 2. formatting
+uv run mypy                          # 3. types
+uv run pytest -m "not network"       # 4. tests
+```
+
+Run check 5 as well before you bump the Apple spec version and before you cut a release. It
+downloads Apple's published spec, so it needs the internet and can fail when Apple's site is
+down. It is not needed for every commit:
+
+```
+uv run pytest -m network             # 5. Apple's real spec still matches ENDPOINTS_USED
 ```

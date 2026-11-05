@@ -29,9 +29,13 @@ def test_lock_file_matches_the_pins() -> None:
         assert re.search(rf'name = "{name}"\nversion = "{re.escape(version)}"', lock), dep
 
 
-def test_version_is_0_2_0_and_changelog_has_an_entry() -> None:
-    assert tomllib.loads(read("pyproject.toml"))["project"]["version"] == "0.2.0"
-    assert "## 0.2.0" in read("CHANGELOG.md")
+def project_version() -> str:
+    """The version in pyproject.toml, so a release only has to change it there."""
+    return str(tomllib.loads(read("pyproject.toml"))["project"]["version"])
+
+
+def test_the_current_version_has_a_changelog_entry() -> None:
+    assert f"## {project_version()} " in read("CHANGELOG.md") + " "
 
 
 def test_ci_uses_locked_installs_and_no_persisted_credentials() -> None:
@@ -61,7 +65,11 @@ def test_dependabot_waits_7_days_for_both_ecosystems() -> None:
 
 def test_readme_recommends_the_pinned_form_without_refresh() -> None:
     readme = read("README.md")
-    pinned = [ln for ln in readme.splitlines() if "claude mcp add" in ln and "@v0.2.0" in ln]
+    pinned = [
+        ln
+        for ln in readme.splitlines()
+        if "claude mcp add" in ln and f"@v{project_version()}" in ln
+    ]
     assert len(pinned) == 1 and "--refresh" not in pinned[0]
     # The always-latest form is explained (with its trade-off), not offered as the default.
     assert "`@main`" in readme and "`--refresh`" in readme

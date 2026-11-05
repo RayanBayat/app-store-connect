@@ -30,7 +30,7 @@ from app_store_connect.auth import AuthError, TokenProvider
 from app_store_connect.client import AscClient, AscError
 from app_store_connect.config import Config, ConfigError, load_config
 from app_store_connect.confirmflow import STATE_TTL_SECONDS, ConfirmationBook, InputRequiredSignal
-from app_store_connect.maintenance import NAMES, TOOLS, Maintenance, text_result
+from app_store_connect.maintenance import MAINTENANCE_TOOL_NAMES, MAINTENANCE_TOOLS, Maintenance
 from app_store_connect.maintenance_record import check_record, load_record, now_local
 from app_store_connect.paths import tildify
 from app_store_connect.tools import all_tools, write_tools
@@ -40,6 +40,7 @@ from app_store_connect.tools.base import (
     ToolInputError,
     ToolRefusedError,
     ToolSpec,
+    text_result,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,7 @@ def error_result(text: str) -> types.CallToolResult:
 
 def snapshot_tool_names() -> list[str]:
     """Every tool name this server can ever offer (writes included), for the review snapshot."""
-    return sorted({tool.name for tool in all_tools(allow_writes=True)} | NAMES)
+    return sorted({tool.name for tool in all_tools(allow_writes=True)} | MAINTENANCE_TOOL_NAMES)
 
 
 class AppServer:
@@ -86,8 +87,10 @@ class AppServer:
         """Read tools (and write tools when enabled) plus the maintenance tools."""
         del ctx, params  # the list does not depend on the request
         if self.startup_error is not None:
-            return types.ListToolsResult(tools=list(TOOLS))
-        return types.ListToolsResult(tools=[*(t.to_tool() for t in self._tools.values()), *TOOLS])
+            return types.ListToolsResult(tools=list(MAINTENANCE_TOOLS))
+        return types.ListToolsResult(
+            tools=[*(t.to_tool() for t in self._tools.values()), *MAINTENANCE_TOOLS]
+        )
 
     async def call_tool(
         self, ctx: ServerRequestContext[Any], params: types.CallToolRequestParams
@@ -96,7 +99,7 @@ class AppServer:
         name, arguments = params.name, params.arguments or {}
         if self.startup_error is not None:
             return error_result(self.startup_error)
-        if name in NAMES:
+        if name in MAINTENANCE_TOOL_NAMES:
             return await self._maintenance_call(name, arguments, ctx, params)
         tool = self._tools.get(name)
         if tool is None:

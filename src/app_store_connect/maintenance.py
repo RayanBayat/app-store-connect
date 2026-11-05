@@ -41,11 +41,12 @@ from app_store_connect.report import (
     ReportFacts,
     ReportInputs,
     ReportResult,
-    build_report_with_facts,
+    build_report,
     installed_packages,
 )
 from app_store_connect.spec import APPLE_API_SPEC_VERSION
 from app_store_connect.textsafe import escape_display
+from app_store_connect.tools.base import text_result
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +54,6 @@ STATUS: Final = "maintenance_status"
 REPORT: Final = "maintenance_report"
 CONFIRM: Final = "maintenance_confirm_review"
 MAX_SUMMARY_CHARS: Final = 500
-TERMINAL_COMMAND: Final = (
-    "uvx --from git+https://github.com/RayanBayat/app-store-connect@main app-store-connect review"
-)
 # No input fields: the human's own Accept button confirms they read the report (see
 # tools/confirm.py for why there is no checkbox).
 CONFIRM_SCHEMA: Final[dict[str, Any]] = {"type": "object", "properties": {}}
@@ -63,7 +61,7 @@ HTTP_TIMEOUT: Final = httpx.Timeout(30.0, connect=10.0)
 
 _EMPTY_INPUT: Final[dict[str, Any]] = {"type": "object", "properties": {}}
 
-TOOLS: Final[list[types.Tool]] = [
+MAINTENANCE_TOOLS: Final[list[types.Tool]] = [
     types.Tool(
         name=STATUS,
         description=(
@@ -108,16 +106,21 @@ TOOLS: Final[list[types.Tool]] = [
         ),
     ),
 ]
-NAMES: Final = frozenset(tool.name for tool in TOOLS)
+MAINTENANCE_TOOL_NAMES: Final = frozenset(tool.name for tool in MAINTENANCE_TOOLS)
 
 ResultFn = Callable[[list[str]], ReportResult]
 # A review may only be confirmed on a report that this server built a short while ago.
 REPORT_MAX_AGE: Final = timedelta(minutes=30)
 
 
-def text_result(text: str, *, is_error: bool = False) -> types.CallToolResult:
-    """Wrap plain text as a tool result."""
-    return types.CallToolResult(content=[types.TextContent(text=text)], is_error=is_error)
+def terminal_command() -> str:
+    """The command that runs the review in a terminal, installed the way the README says.
+
+    It pins the tag of the version that is running (`v0.2.0`), so the person runs the same code
+    they installed and not whatever is newest on `main`.
+    """
+    source = f"git+https://github.com/RayanBayat/app-store-connect@v{__version__}"
+    return f"uvx --from {source} app-store-connect review"
 
 
 def new_report_client() -> httpx.Client:
@@ -125,8 +128,13 @@ def new_report_client() -> httpx.Client:
     return httpx.Client(timeout=HTTP_TIMEOUT, follow_redirects=False)
 
 
-def make_report_result(current_tools: list[str]) -> ReportResult:
-    """Build the real report with its figures (network access). Run it in a worker thread."""
+def make_report(current_tools: list[str]) -> ReportResult:
+    """Build the real report (text and figures) with live network access.
+
+    This is what `maintenance_report` and the `review` command use. It blocks while it downloads
+    Apple's spec, PyPI and OSV, so the server runs it in a worker thread. Tests use
+    `report.build_report` with fake inputs instead.
+    """
     with new_report_client() as client:
         inputs = ReportInputs(
             client=client,
@@ -135,12 +143,7 @@ def make_report_result(current_tools: list[str]) -> ReportResult:
             current_tools=current_tools,
             packages=installed_packages(),
         )
-        return build_report_with_facts(inputs)
-
-
-def make_report(current_tools: list[str]) -> str:
-    """Build the real report text only (used by the `review` command)."""
-    return make_report_result(current_tools).text
+        return build_report(inputs)
 
 
 def describe_review(review: MaintenanceRecord | None, now: datetime, max_days: int) -> list[str]:
@@ -181,7 +184,7 @@ class Maintenance:
 
     config: Config
     clock: Callable[[], datetime] = now_local
-    report_fn: ResultFn = field(default=make_report_result)
+    report_fn: ResultFn = field(default=make_report)
     _last_report: tuple[datetime, ReportFacts] | None = field(default=None, init=False)
     _book: ConfirmationBook = field(default_factory=ConfirmationBook, init=False)
 
@@ -202,17 +205,19 @@ class Maintenance:
             result = await asyncio.to_thread(self.report_fn, tool_names)
             self._last_report = (self.clock(), result.facts)  # this session built a report
             return text_result(result.text)
-        try:
-            return await self.confirm(
-                str(arguments.get("summary", "")),
-                session,
-                tool_names,
-                arguments=arguments,
-                input_responses=input_responses,
-                request_state=request_state,
-            )
-        except InputRequiredSignal as signal:  # the human is asked; the client calls again
-            return signal.result
+        if name == CONFIRM:
+            try:
+                return await self.confirm(
+                    str(arguments.get("summary", "")),
+                    session,
+                    tool_names,
+                    arguments=arguments,
+                    input_responses=input_responses,
+                    request_state=request_state,
+                )
+            except InputRequiredSignal as signal:  # the human is asked; the client calls again
+                return signal.result
+        return text_result(f"'{name}' is not a maintenance tool.", is_error=True)
 
     def status(self) -> str:
         """Text for maintenance_status."""
@@ -259,7 +264,7 @@ class Maintenance:
         except ConfirmationRefusedError as exc:
             return text_result(
                 f"The review was NOT recorded: {exc}. Ask the user to run this in a terminal "
-                f"instead: {TERMINAL_COMMAND}",
+                f"instead: {terminal_command()}",
                 is_error=True,
             )
         stamp_record(self.clock(), APPLE_API_SPEC_VERSION, summary, tool_names)

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from mcp import Client
 
+from app_store_connect import __version__
 from app_store_connect.maintenance_record import load_record, stamp_record
 from app_store_connect.server import AppServer, create_app, snapshot_tool_names
 from app_store_connect.spec import APPLE_API_SPEC_VERSION
@@ -102,7 +103,7 @@ async def test_confirm_review_does_not_stamp_otherwise(tmp_path: Path, action: F
         await client.call_tool("maintenance_report", {})
         result = await client.call_tool("maintenance_confirm_review", {"summary": "ok"})
     assert result.is_error
-    assert "app-store-connect@main app-store-connect review" in text_of(result)
+    assert f"app-store-connect@v{__version__} app-store-connect review" in text_of(result)
     assert load_record() is None
 
 

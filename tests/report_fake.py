@@ -14,7 +14,7 @@ from typing import Any
 import httpx
 
 from app_store_connect.maintenance_record import MaintenanceRecord
-from app_store_connect.report import ReportInputs
+from app_store_connect.report import ReportInputs, build_report
 from app_store_connect.spec import APPLE_API_SPEC_VERSION, ENDPOINTS_USED
 from app_store_connect.tools import versions
 
@@ -53,6 +53,11 @@ def feed(*versions: str) -> bytes:
     """A PyPI releases feed with the given versions (in the given order)."""
     items = "".join(f"<item><title>{v}</title><link>x</link></item>" for v in versions)
     return f"<?xml version='1.0'?><rss><channel><title>t</title>{items}</channel></rss>".encode()
+
+
+def report_text(inputs: ReportInputs) -> str:
+    """The text of the report built from fake `inputs`."""
+    return build_report(inputs).text
 
 
 def make_inputs(

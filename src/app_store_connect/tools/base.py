@@ -200,6 +200,11 @@ def related_id(item: dict[str, Any], name: str) -> str | None:
     return str(related) if related is not None else None
 
 
+def text_result(text: str, *, is_error: bool = False) -> types.CallToolResult:
+    """Wrap plain text as a tool result (this is what every tool returns to the client)."""
+    return types.CallToolResult(content=[types.TextContent(text=text)], is_error=is_error)
+
+
 def to_text(value: Any) -> str:
     """Render a result as readable JSON text."""
     return json.dumps(value, indent=2, ensure_ascii=False)

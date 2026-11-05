@@ -157,6 +157,11 @@ def cmd_doctor(env: Mapping[str, str], *, online: bool) -> int:
     return 0 if ok else 1
 
 
+def report_text(tool_names: list[str]) -> str:
+    """The real report as text, for a person reading it in a terminal."""
+    return make_report(tool_names).text
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line."""
     args = build_parser().parse_args(argv)
@@ -164,7 +169,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "status":
         return cmd_status(env)
     if args.command == "review":
-        return cmd_review(interactive=sys.stdin.isatty(), ask=input, report_fn=make_report)
+        return cmd_review(interactive=sys.stdin.isatty(), ask=input, report_fn=report_text)
     if args.command == "doctor":
         return cmd_doctor(env, online=args.online)
     asyncio.run(serve_stdio(create_app(env)))
