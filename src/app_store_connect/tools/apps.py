@@ -38,7 +38,7 @@ async def list_apps(ctx: ToolContext, args: dict[str, Any]) -> str:
 
 async def get_app(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Return one app's details."""
-    data = await ctx.client.request("GET", "/v1/apps/{id}", item_id=require_str(args, "app_id"))
+    data = await ctx.client.request("GET", "/v1/apps/{id}", item_id=require_id(args, "app_id"))
     return to_text(summarize(resource_of(data), APP_FIELDS, wrap=WRAPPED))
 
 

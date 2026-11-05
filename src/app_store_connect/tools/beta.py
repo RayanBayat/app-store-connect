@@ -14,6 +14,7 @@ from app_store_connect.tools.base import (
     attributes_of,
     limit_arg,
     optional_str,
+    require_id,
     require_str,
     resource_of,
     string_prop,
@@ -33,7 +34,7 @@ TESTER_FIELDS = ("firstName", "lastName", "email", "inviteType", "state")
 async def list_beta_groups(ctx: ToolContext, args: dict[str, Any]) -> str:
     """List an app's TestFlight beta groups."""
     items = await ctx.client.paginate(
-        "/v1/apps/{id}/betaGroups", item_id=require_str(args, "app_id"), max_items=limit_arg(args)
+        "/v1/apps/{id}/betaGroups", item_id=require_id(args, "app_id"), max_items=limit_arg(args)
     )
     return to_text([summarize(item, GROUP_FIELDS, wrap=GROUP_WRAPPED) for item in items])
 
@@ -55,7 +56,7 @@ async def list_beta_testers(ctx: ToolContext, args: dict[str, Any]) -> str:
 
 async def add_beta_tester(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Invite a tester (by email) and add them to a beta group."""
-    group_id, email = require_str(args, "beta_group_id"), require_str(args, "email")
+    group_id, email = require_id(args, "beta_group_id"), require_str(args, "email")
     if not EMAIL_PATTERN.fullmatch(email):
         raise ToolInputError(f"{email!r} does not look like an email address.")
     first, last = optional_str(args, "first_name"), optional_str(args, "last_name")
@@ -81,7 +82,7 @@ async def add_beta_tester(ctx: ToolContext, args: dict[str, Any]) -> str:
 
 async def remove_beta_tester(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Remove a tester from a beta group (the tester is not deleted from the account)."""
-    group_id, tester_id = require_str(args, "beta_group_id"), require_str(args, "beta_tester_id")
+    group_id, tester_id = require_id(args, "beta_group_id"), require_id(args, "beta_tester_id")
     name = await group_name(ctx, group_id)
     tester = await ctx.client.request("GET", "/v1/betaTesters/{id}", item_id=tester_id)
     email = attributes_of(resource_of(tester)).get("email")

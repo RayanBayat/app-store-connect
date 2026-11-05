@@ -13,7 +13,7 @@ from app_store_connect.tools.base import (
     limit_arg,
     optional_str,
     relationship,
-    require_str,
+    require_id,
     resource_of,
     string_prop,
     summarize,
@@ -49,7 +49,7 @@ async def list_builds(ctx: ToolContext, args: dict[str, Any]) -> str:
 
 async def get_build(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Return one build's details."""
-    data = await ctx.client.request("GET", "/v1/builds/{id}", item_id=require_str(args, "build_id"))
+    data = await ctx.client.request("GET", "/v1/builds/{id}", item_id=require_id(args, "build_id"))
     return to_text(summarize(resource_of(data), BUILD_FIELDS))
 
 
@@ -61,7 +61,7 @@ async def build_label(ctx: ToolContext, build_id: str) -> str:
 
 async def add_build_to_beta_group(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Make a build available to a TestFlight beta group."""
-    group_id, build_id = require_str(args, "beta_group_id"), require_str(args, "build_id")
+    group_id, build_id = require_id(args, "beta_group_id"), require_id(args, "build_id")
     name, label = await group_name(ctx, group_id), await build_label(ctx, build_id)
     lines = [f"Build: {label}", f"Added to beta group: {name} ({group_id})"]
     await confirm_change(ctx, "Add a build to a TestFlight beta group", lines)
@@ -74,7 +74,7 @@ async def add_build_to_beta_group(ctx: ToolContext, args: dict[str, Any]) -> str
 
 async def submit_build_for_beta_review(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Send a build to Apple's TestFlight beta app review (needed for external testers)."""
-    build_id = require_str(args, "build_id")
+    build_id = require_id(args, "build_id")
     label = await build_label(ctx, build_id)
     lines = [f"Build: {label}", "Action: submit to Apple for TestFlight beta app review"]
     await confirm_change(ctx, "Submit a build for TestFlight beta review", lines)

@@ -15,6 +15,7 @@ from app_store_connect.tools.base import (
     optional_choice,
     optional_str,
     relationship,
+    require_id,
     require_str,
     resource_of,
     string_prop,
@@ -43,7 +44,7 @@ async def list_app_store_versions(ctx: ToolContext, args: dict[str, Any]) -> str
         params["filter[platform]"] = platform
     items = await ctx.client.paginate(
         "/v1/apps/{id}/appStoreVersions",
-        item_id=require_str(args, "app_id"),
+        item_id=require_id(args, "app_id"),
         params=params,
         max_items=limit_arg(args),
     )
@@ -53,14 +54,14 @@ async def list_app_store_versions(ctx: ToolContext, args: dict[str, Any]) -> str
 async def get_version_status(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Return the state of one store version (for example READY_FOR_REVIEW or IN_REVIEW)."""
     data = await ctx.client.request(
-        "GET", "/v1/appStoreVersions/{id}", item_id=require_str(args, "version_id")
+        "GET", "/v1/appStoreVersions/{id}", item_id=require_id(args, "version_id")
     )
     return to_text(summarize(resource_of(data), VERSION_FIELDS))
 
 
 async def create_app_store_version(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Create a new App Store version (a draft; nothing is submitted)."""
-    app_id = require_str(args, "app_id")
+    app_id = require_id(args, "app_id")
     version_string = require_str(args, "version_string")
     platform = choice(args, "platform", PLATFORMS, "IOS")
     release_type = optional_choice(args, "release_type", RELEASE_TYPES)
@@ -88,7 +89,7 @@ async def create_app_store_version(ctx: ToolContext, args: dict[str, Any]) -> st
 
 async def select_build_for_version(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Attach a processed build to an App Store version."""
-    version_id, build_id = require_str(args, "version_id"), require_str(args, "build_id")
+    version_id, build_id = require_id(args, "version_id"), require_id(args, "build_id")
     current = await ctx.client.request(
         "GET", "/v1/appStoreVersions/{id}/relationships/build", item_id=version_id
     )

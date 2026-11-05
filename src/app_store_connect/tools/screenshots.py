@@ -14,6 +14,7 @@ from app_store_connect.tools.base import (
     ToolRefusedError,
     ToolSpec,
     relationship,
+    require_id,
     require_str,
     resource_of,
     string_prop,
@@ -33,7 +34,7 @@ async def list_screenshot_sets(ctx: ToolContext, args: dict[str, Any]) -> str:
     """List screenshot sets of a version localization, with how many screenshots each has."""
     sets = await ctx.client.paginate(
         "/v1/appStoreVersionLocalizations/{id}/appScreenshotSets",
-        item_id=require_str(args, "localization_id"),
+        item_id=require_id(args, "localization_id"),
         max_items=MAX_SETS,
     )
     result: list[dict[str, Any]] = []
@@ -171,7 +172,7 @@ async def send_parts(ctx: ToolContext, data: bytes, operations: list[dict[str, A
 
 async def upload_screenshot(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Upload one screenshot into a screenshot set: reserve, upload parts, commit with MD5."""
-    set_id = require_str(args, "screenshot_set_id")
+    set_id = require_id(args, "screenshot_set_id")
     path, checked = confine_to_root(require_str(args, "file_path"), ctx.config.root)
     data = read_checked_file(path, checked)
     size, checksum = len(data), md5_hex(data)

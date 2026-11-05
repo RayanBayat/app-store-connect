@@ -19,7 +19,7 @@ from app_store_connect.tools.base import (
     choice,
     optional_str,
     relationship,
-    require_str,
+    require_id,
     resource_of,
     string_prop,
     summarize,
@@ -34,14 +34,14 @@ async def get_review_submissions(ctx: ToolContext, args: dict[str, Any]) -> str:
     if state := optional_str(args, "state"):
         params["filter[state]"] = state
     items = await ctx.client.paginate(
-        "/v1/apps/{id}/reviewSubmissions", item_id=require_str(args, "app_id"), params=params
+        "/v1/apps/{id}/reviewSubmissions", item_id=require_id(args, "app_id"), params=params
     )
     return to_text([summarize(item, ("platform", "state", "submittedDate")) for item in items])
 
 
 async def submit_for_app_review(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Submit an App Store version to Apple App Review (three API steps, one confirmation)."""
-    app_id, version_id = require_str(args, "app_id"), require_str(args, "version_id")
+    app_id, version_id = require_id(args, "app_id"), require_id(args, "version_id")
     platform = choice(args, "platform", PLATFORMS, "IOS")
     app = resource_of(await ctx.client.request("GET", "/v1/apps/{id}", item_id=app_id))
     await require_version_of_app(ctx, app_id, version_id)

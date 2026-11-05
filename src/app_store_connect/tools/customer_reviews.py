@@ -18,6 +18,7 @@ from app_store_connect.tools.base import (
     limit_arg,
     optional_str,
     relationship,
+    require_id,
     require_str,
     resource_of,
     string_prop,
@@ -50,7 +51,7 @@ async def list_customer_reviews(ctx: ToolContext, args: dict[str, Any]) -> str:
         params["filter[territory]"] = territory
     items = await ctx.client.paginate(
         "/v1/apps/{id}/customerReviews",
-        item_id=require_str(args, "app_id"),
+        item_id=require_id(args, "app_id"),
         params=params,
         max_items=limit_arg(args),
     )
@@ -59,7 +60,7 @@ async def list_customer_reviews(ctx: ToolContext, args: dict[str, Any]) -> str:
 
 async def reply_to_customer_review(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Publish a developer reply to a customer review (public)."""
-    review_id, reply = require_str(args, "review_id"), require_str(args, "response_body")
+    review_id, reply = require_id(args, "review_id"), require_str(args, "response_body")
     if len(reply) > MAX_REPLY_CHARS:
         raise ToolInputError(f"response_body is longer than {MAX_REPLY_CHARS} characters.")
     review = resource_of(

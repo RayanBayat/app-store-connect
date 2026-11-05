@@ -91,14 +91,14 @@ async def get_version_localizations(ctx: ToolContext, args: dict[str, Any]) -> s
     """Return the store text of every language of an App Store version."""
     items = await ctx.client.paginate(
         "/v1/appStoreVersions/{id}/appStoreVersionLocalizations",
-        item_id=require_str(args, "version_id"),
+        item_id=require_id(args, "version_id"),
     )
     return to_text([summarize(item, VERSION_FIELDS, wrap=VERSION_TEXT_FIELDS) for item in items])
 
 
 async def get_app_info_localizations(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Return name, subtitle and privacy URL per language for each app info of an app."""
-    infos = await ctx.client.paginate("/v1/apps/{id}/appInfos", item_id=require_str(args, "app_id"))
+    infos = await ctx.client.paginate("/v1/apps/{id}/appInfos", item_id=require_id(args, "app_id"))
     result: list[dict[str, Any]] = []
     for info in infos:
         items = await ctx.client.paginate(

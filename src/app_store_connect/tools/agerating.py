@@ -18,7 +18,6 @@ from app_store_connect.tools.base import (
     ToolRefusedError,
     ToolSpec,
     require_id,
-    require_str,
     resource_of,
     string_prop,
     to_text,
@@ -116,7 +115,7 @@ def is_editable(state: object) -> bool:
 
 async def get_age_rating(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Return the answers (and unanswered questions) for each app info of an app."""
-    infos = await ctx.client.paginate("/v1/apps/{id}/appInfos", item_id=require_str(args, "app_id"))
+    infos = await ctx.client.paginate("/v1/apps/{id}/appInfos", item_id=require_id(args, "app_id"))
     result: list[dict[str, Any]] = []
     for info in infos:
         info_id = str(info["id"])
