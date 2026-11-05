@@ -2,13 +2,26 @@
 
 A short guide for contributors: how the server works, where the code lives, and the facts about Apple and MCP that shape it. Plain words on purpose. If something here becomes untrue, fix it in the same pull request.
 
+## Start here
+
+A reading order for someone new to the code. Each step is small; stop and try things as you go.
+
+1. Read the [README](../README.md), then "The flow of one tool call" and "Words used here" in this file.
+2. `cli.py`: read `main()`. Then `server.py`: how a call is checked and dispatched.
+3. `tools/base.py` (the building blocks every tool uses), then `tools/apps.py` (the smallest tool module, one read tool and one write tool).
+4. `tools/confirm.py` (how a tool asks the human), then `confirmflow.py` (what makes that safe on both protocols).
+5. `spec.py` (the endpoints we may call), `client.py` (how we call Apple), `auth.py` (the signed token), `config.py` (the settings).
+6. `maintenance_record.py` (proof of the monthly review), `maintenance.py` (the three maintenance tools), `report.py` (the report itself).
+7. Tests: read `tests/apple_fake.py` (the fake Apple and the fake human), then `tests/test_tools_read.py`. Run `uv run pytest -k list_apps -v` to watch one test pass. Then break an assertion on purpose (for example change an expected name) and run it again to see how a failure looks.
+8. `tests/test_confirm_eras.py` (confirmations on both protocols) and [docs/security.md](security.md) (why the rules exist).
+
 ## The flow of one tool call
 
 1. **Start.** The MCP client starts the server with `uvx`. The server reads its settings from environment variables (`config.py`) and refuses to run if the key file can be read by other users.
 2. **Gate.** Before any Apple tool runs, `server.py` checks the maintenance record (`maintenance_record.py`). If it's missing or older than `ASC_REVIEW_MAX_DAYS`, the call is refused and Claude is told to run the review.
 3. **Sign.** `auth.py` makes a short-lived signed pass (a JWT, valid for 15 minutes) from the `.p8` key. It is sent only to `api.appstoreconnect.apple.com`.
 4. **Call Apple.** `client.py` sends the request. It only allows endpoints listed in `ENDPOINTS_USED` (`spec.py`), checks every ID, never follows redirects, and limits response size.
-5. **Read tools** return Apple's data. Text written by people outside the team is wrapped in untrusted-content markers carrying a random value (`tools/base.py`), so it can't fake the end of the marker.
+5. **Read tools** return Apple's data. Text written by people outside the team is wrapped in untrusted-content markers carrying a random value (`textsafe.py`), so it can't fake the end of the marker.
 6. **Change tools** first ask the human (`confirmflow.py`, `tools/confirm.py`). The form shows the exact old and new values, in full, with hidden characters made visible. Only an explicit accept sends the request, and only once.
 
 ## Tools
@@ -28,8 +41,12 @@ A short guide for contributors: how the server works, where the code lives, and 
 
 ## Asking the human: two protocol versions
 
-- **MCP protocol `2026-07-28`** (what current Claude Code uses): a server can't send a form in the middle of a tool call. The tool call returns `InputRequiredResult` with the form and a sealed `request_state`. The client shows the form and calls the tool again with the answer.
-- **Older versions:** the server sends the form during the call (`elicit_form`).
+Two plain terms are used everywhere (code, tests and docs) for the two ways to ask:
+
+- **Older protocol (up to 2025-11-25): the server asks during the call.** It sends the form to the client in the middle of the tool call (`elicit_form`, the "back-channel") and waits for the answer.
+- **Protocol 2026-07-28 (what current Claude Code uses): the call returns "input required".** A server can't send a form in the middle of a tool call. The tool call returns `InputRequiredResult` with the form and a sealed `request_state`. The client shows the form and calls the tool again with the answer.
+
+In the tests these are `OLD_PROTOCOL` and `NEW_PROTOCOL` (`tests/apple_fake.py`).
 
 The forms have **no input fields**: the text shows the change, and the human pressing Accept is the approval. A required checkbox turned out to be impossible to tick in Claude Code's form, so it was removed.
 
@@ -74,15 +91,39 @@ Every fetch has a size cap and a timeout. Anything that couldn't be checked is s
 
 ## Where things are
 
+Paths are inside `src/app_store_connect/` unless they start with `tests/`.
+
 | Path | What it does |
 |---|---|
-| `server.py` | Tool list, the monthly gate, dispatching calls |
-| `tools/` | One file per area: apps, versions, builds, beta, localizations, screenshots, customer_reviews, app_review, availability (with territories), pricing |
-| `confirmflow.py`, `tools/confirm.py` | Human approval on both protocol versions |
-| `client.py`, `spec.py` | Talking to Apple; the allowed endpoint list |
-| `auth.py`, `config.py` | Signing; settings and key checks |
-| `maintenance_record.py`, `report.py`, `maintenance.py` | The monthly review |
-| `cli.py` | `serve`, `status`, `review`, `doctor` |
+| `__init__.py` | The app name (`APP_NAME`, written once) and the version |
+| `cli.py` | The commands: `serve` (the default), `status`, `review`, `doctor` |
+| `server.py` | The tool list, the monthly gate, dispatching calls, the catch-all error message |
+| `config.py` | Reads the settings (environment variables) and checks the key file |
+| `auth.py` | Signs the short-lived token (JWT) from the `.p8` key |
+| `client.py` | Talks to Apple: allowed endpoints only, ID checks, retries, size limit, readable errors |
+| `spec.py` | `ENDPOINTS_USED` (the allowed endpoints) and the Apple spec version we checked |
+| `confirmflow.py` | Asking the human, on both protocols, and never acting on a guess |
+| `maintenance_record.py` | The proof that a human did the monthly review (the `review.json` file) |
+| `maintenance.py` | The three maintenance tools and the form for confirming the review |
+| `report.py` | Builds the monthly report (spec, endpoints, dependencies, tool changes) |
+| `osv.py` | Asks the OSV database about known vulnerabilities in installed packages |
+| `httpio.py` | Size-capped downloads for the report, careful with redirects |
+| `identity.py` | Which code is running (version and git commit) and whether it is the reviewed code |
+| `paths.py` | Where files are kept (XDG folders, private mode 0700) |
+| `textsafe.py` | Makes text safe for a human (escaped for forms) and for the model (untrusted markers) |
+| `tools/__init__.py` | The tool registry, and the "How to add a tool" guide |
+| `tools/base.py` | Building blocks for every tool: `ToolSpec`, argument checks, `resource_of`, `text_result` |
+| `tools/confirm.py` | `confirm_change`: the form a write tool shows before it sends anything |
+| `tools/lookups.py` | Reads several tools need: app and group names for forms, the current price |
+| `tools/apps.py`, `versions.py`, `builds.py`, `beta.py` | Apps, App Store versions, builds, TestFlight groups and testers |
+| `tools/localizations.py` | Store text per language (update and create), with the argument-name table |
+| `tools/locales.py` | The 50 App Store language codes |
+| `tools/screenshots.py` | Screenshot sets and uploads (confined to `ASC_ROOT`) |
+| `tools/customer_reviews.py` | Customer reviews and public replies |
+| `tools/app_review.py` | Submissions to Apple's App Review |
+| `tools/availability.py`, `tools/pricing.py`, `tools/territories.py` | Where the app is sold, its price, and territory codes and names |
+| `tools/agerating.py` | The age rating questions: read the answers, change them |
+| `tests/` | One test file per area. `apple_fake.py` has the fake Apple (`FakeApple`) and the fake human (`FormAnswerer`); `helpers.py` makes a test key and config; `report_fake.py` fakes the report's inputs; `conftest.py` isolates every test from your real files |
 
 ## Words used here
 
@@ -95,3 +136,12 @@ Every fetch has a size cap and a timeout. Anything that couldn't be checked is s
 - **JWT:** a short-lived signed pass made from your key.
 - **Endpoint:** one address in Apple's API, such as `GET /v1/apps`.
 - **OSV:** a public database of known security problems in libraries.
+- **Back-channel:** how the older protocol asks a question during a tool call: the server sends a request back to the client on the same connection.
+- **Input required:** the answer of protocol 2026-07-28 when the server needs the human: the tool call returns the form instead of a result, and the client calls again with the answer.
+- **Request state:** the sealed note (`request_state`) the server hands out with "input required". It comes back with the retry, so the server can tell the retry belongs to the form it showed.
+- **Nonce:** a random one-time value inside the request state. Each can be used once, so an old answer cannot be replayed.
+- **JSON:API:** the format of Apple's answers: a `data` object (or list) with an `id`, a `type` and `attributes`. `resource_of` and `attributes_of` (`tools/base.py`) read it.
+- **Presigned URL:** an address that carries its own permission in the URL. Screenshot uploads go to one, so no `Authorization` header is sent there.
+- **Territory:** a country or region where the App Store sells apps, written as a three-letter code such as SWE.
+- **App info and version localization:** two kinds of store text per language. The app info localization holds name, subtitle and privacy policy URL and belongs to the app. The version localization holds description, keywords, what's new and URLs and belongs to one App Store version.
+- **Fail closed:** when something is missing or unclear (no record, a broken file, no answer), the safe thing happens: tools refuse and nothing is sent.

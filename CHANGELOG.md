@@ -6,6 +6,17 @@
   takes `whats_new`, `promotional_text`, `marketing_url` and `support_url` (it used `whatsNew`,
   `promotionalText`, `marketingUrl` and `supportUrl`), and `update_app_info_localization` takes
   `privacy_policy_url` (it used `privacyPolicyUrl`). The create tools already used these names.
+- Readability pass over the whole repository (no change in what the tools do, except the renamed
+  arguments above and the clearer errors below). The three meanings of "review" now have their own
+  names (`maintenance_record.py`, `tools/customer_reviews.py`, `tools/app_review.py`); every tool
+  module has the same layout and keyword-built `ToolSpec`s; tests share one `FormAnswerer`; the
+  docs gained a "Start here" reading order, a complete file table and a fuller glossary; and
+  ruff now limits function size and complexity.
+- Clearer errors: an Apple answer without `data`/`attributes`, or a successful answer that is not
+  JSON, now says so instead of failing with a bare KeyError or silently returning nothing; the
+  catch-all message says it is a bug and where to report it (the traceback goes to stderr); the
+  monthly report shows NOT CHECKED, never "all up to date", when it cannot read the package
+  metadata.
 - Contributor rules: everything in the repository must be readable by a beginner (AGENTS.md).
 - New `get_age_rating` and `update_age_rating`: see and answer Apple's age rating questionnaire,
   which must be fully answered before an update can be submitted (Apple otherwise refuses with
