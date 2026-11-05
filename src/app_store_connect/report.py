@@ -121,7 +121,9 @@ class ReportInputs:
     review: MaintenanceRecord | None
     current_tools: list[str]
     packages: list[osv.Query]  # every installed runtime package (for the vulnerability scan)
-    direct_packages: list[osv.Query] = field(default_factory=list)  # our own == pins
+    # Reads our own == pins. A function (not a list) so that a failure to read them is caught
+    # where the "Outdated" section is built, and shown there as NOT CHECKED.
+    read_direct_packages: Callable[[], list[osv.Query]] = field(default=lambda: direct_packages())
     code: CodeIdentity = field(default_factory=current_identity)
 
 
@@ -217,15 +219,20 @@ def attribute_section(spec: SpecInfo) -> list[str]:
     return [*lines, *(notes or ["No changes affecting us."]), ""]
 
 
+def area_of(path: str) -> str:
+    """The area of an endpoint path: the part after the version, so '/v1/apps/{id}' is 'apps'."""
+    parts = path.split("/")  # ['', 'v1', 'apps', '{id}']
+    return parts[2] if len(parts) > 2 else ""
+
+
 def area_section(spec: SpecInfo) -> list[str]:
     """Other endpoints in the same areas as ours (for awareness; they are not used)."""
-    roots = {path.split("/")[2] for _, path in ENDPOINTS_USED}
+    used_paths = {path for _, path in ENDPOINTS_USED}
+    areas = {area_of(path) for path in used_paths}
     lines = ["### Other endpoints in the areas we use", ""]
-    for root in sorted(roots):
-        extra = sorted(
-            {p for _, p in spec.operations if p.split("/")[2:3] == [root]}
-            - {p for _, p in ENDPOINTS_USED}
-        )
+    for root in sorted(areas):
+        in_area = {path for _, path in spec.operations if area_of(path) == root}
+        extra = sorted(in_area - used_paths)
         if extra:
             shown = ", ".join(f"`{p}`" for p in extra[:3])
             lines.append(f"- `{root}`: {len(extra)} not used, e.g. {shown}")
@@ -245,22 +252,35 @@ def installed_packages() -> list[osv.Query]:
     return sorted(found, key=lambda item: item[0].lower())
 
 
+def normalise_package_name(name: str) -> str:
+    """Make two spellings of a package name comparable: 'Foo_Bar' and 'foo-bar' are the same."""
+    return name.lower().replace("_", "-")
+
+
 def direct_packages() -> list[osv.Query]:
-    """(name, installed version) of our direct runtime dependencies, from our own metadata."""
+    """(name, installed version) of our direct runtime dependencies, from our own metadata.
+
+    Raises `ReportError` when that metadata is missing. Returning an empty list instead would make
+    the report say "all up to date" without having checked anything.
+    """
     try:
-        requirements = metadata.requires(OWN_PACKAGE) or []
-    except metadata.PackageNotFoundError:
-        return []
+        requirements = metadata.requires(OWN_PACKAGE)
+    except metadata.PackageNotFoundError as exc:
+        raise ReportError(
+            f"{OWN_PACKAGE} is not installed as a package, so its dependencies cannot be listed."
+        ) from exc
+    if not requirements:
+        raise ReportError(f"The installed {OWN_PACKAGE} lists no dependencies in its metadata.")
     names = {
         match.group(0)
         for text in requirements
         if "extra ==" not in text and (match := re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", text))
     }
-    installed = dict(installed_packages())
-    by_key = {key.lower().replace("_", "-"): (key, ver) for key, ver in installed.items()}
-    found = [
-        by_key[n.lower().replace("_", "-")] for n in names if n.lower().replace("_", "-") in by_key
-    ]
+    installed_by_name = {
+        normalise_package_name(name): (name, version) for name, version in installed_packages()
+    }
+    wanted = {normalise_package_name(name) for name in names}
+    found = [installed_by_name[key] for key in wanted if key in installed_by_name]
     return sorted(found, key=lambda item: item[0].lower())
 
 
@@ -313,7 +333,7 @@ def outdated_section(inputs: ReportInputs) -> tuple[list[str], int]:
     """
     lines = ["## Our dependencies", "", "### Outdated", ""]
     outdated: list[str] = []
-    for name, installed in inputs.direct_packages:
+    for name, installed in inputs.read_direct_packages():
         latest = latest_on_pypi(inputs.client, name)
         if is_outdated(installed, latest):
             outdated.append(f"- `{name}` {installed} -> {latest}")

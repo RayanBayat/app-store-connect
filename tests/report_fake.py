@@ -87,5 +87,5 @@ def make_inputs(
         review=review,
         current_tools=tools or ["list_apps"],
         packages=[("httpx", "1.0.0"), ("pyjwt", "1.0.0"), ("pydantic_core", "2.0.0")],
-        direct_packages=[("httpx", "1.0.0"), ("pyjwt", "1.0.0")],
+        read_direct_packages=lambda: [("httpx", "1.0.0"), ("pyjwt", "1.0.0")],
     )

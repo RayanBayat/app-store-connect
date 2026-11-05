@@ -42,7 +42,6 @@ from app_store_connect.report import (
     ReportInputs,
     ReportResult,
     build_report_with_facts,
-    direct_packages,
     installed_packages,
 )
 from app_store_connect.spec import APPLE_API_SPEC_VERSION
@@ -135,7 +134,6 @@ def make_report_result(current_tools: list[str]) -> ReportResult:
             review=load_record(),
             current_tools=current_tools,
             packages=installed_packages(),
-            direct_packages=direct_packages(),
         )
         return build_report_with_facts(inputs)
 

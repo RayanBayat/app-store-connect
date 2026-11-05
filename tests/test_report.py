@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from importlib import metadata
 
 import httpx
 import pytest
@@ -100,6 +101,26 @@ def test_direct_packages_are_our_pins_from_package_metadata() -> None:
     names = {name.lower() for name, _ in report.direct_packages()}
     assert {"httpx", "mcp", "pyjwt", "cryptography"} <= names
     assert "pydantic-core" not in names and "pydantic_core" not in names
+
+
+def test_missing_package_metadata_shows_not_checked_never_all_up_to_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def no_metadata(_name: str) -> list[str]:
+        raise metadata.PackageNotFoundError
+
+    monkeypatch.setattr(metadata, "requires", no_metadata)
+    with pytest.raises(report.ReportError, match="cannot be listed"):
+        report.direct_packages()
+    text = build_report(replace(make_inputs(), read_direct_packages=report.direct_packages))
+    assert "NOT CHECKED" in text
+    assert "All installed packages are on their latest release" not in text
+
+
+def test_area_of_an_endpoint_is_the_part_after_the_version() -> None:
+    assert report.area_of("/v1/apps/{id}/appInfos") == "apps"
+    assert report.area_of("/v2/appAvailabilities/{id}") == "appAvailabilities"
+    assert report.area_of("/v1") == ""
 
 
 def test_vulnerabilities_listed() -> None:
