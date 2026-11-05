@@ -116,7 +116,7 @@ async def test_online_check_uses_only_a_list_call(
         return real(tokens, transport=httpx.MockTransport(handler))
 
     monkeypatch.setattr(cli, "AscClient", fake_client)
-    assert (await cli.online_check(good_env(tmp_path))).startswith("OK")
+    assert (await cli.online_check(good_env(tmp_path))).ok
     assert seen == [("GET", "/v1/apps")]
 
 

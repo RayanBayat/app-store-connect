@@ -11,6 +11,7 @@ import asyncio
 import os
 import sys
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 
 from app_store_connect import __version__
 from app_store_connect.auth import AuthError, TokenProvider
@@ -85,54 +86,72 @@ def cmd_review(*, interactive: bool, ask: Ask, report_fn: ReportFn) -> int:
     return 0
 
 
-def check_credentials(env: Mapping[str, str]) -> list[str]:
+@dataclass(frozen=True, slots=True)
+class Check:
+    """One line of the `doctor` report: whether it passed, and the text to print."""
+
+    ok: bool
+    text: str
+
+
+def check_credentials(env: Mapping[str, str]) -> list[Check]:
     """Local checks: settings, key file permissions, and that a token can be signed."""
     try:
         config = load_config(env)
     except ConfigError as exc:
-        return [str(exc)]
-    lines = [
-        f"OK  settings are valid (key ID {config.masked_key_id}, {config.key_kind} key)",
-        f"OK  key file {masked_path(config.private_key_path)} is private "
-        "(mode 600 in a private folder)",
+        return [Check(ok=False, text=str(exc))]
+    checks = [
+        Check(
+            ok=True,
+            text=f"OK  settings are valid (key ID {config.masked_key_id}, {config.key_kind} key)",
+        ),
+        Check(
+            ok=True,
+            text=f"OK  key file {masked_path(config.private_key_path)} is private "
+            "(mode 600 in a private folder)",
+        ),
     ]
     try:
         TokenProvider(config).token()
     except AuthError as exc:
-        return [*lines, f"FAIL {exc}"]
-    lines.append("OK  an API token can be signed with this key")
-    lines.append(f"    writes: {'ENABLED' if config.allow_writes else 'off (read-only)'}")
-    lines.append(f"    file access folder (ASC_ROOT): {config.root or 'not set (file tools off)'}")
-    return lines
+        return [*checks, Check(ok=False, text=f"FAIL {exc}")]
+    writes = "ENABLED" if config.allow_writes else "off (read-only)"
+    root = config.root or "not set (file tools off)"
+    return [
+        *checks,
+        Check(ok=True, text="OK  an API token can be signed with this key"),
+        Check(ok=True, text=f"    writes: {writes}"),  # information, not a check
+        Check(ok=True, text=f"    file access folder (ASC_ROOT): {root}"),
+    ]
 
 
-async def online_check(env: Mapping[str, str]) -> str:
+async def online_check(env: Mapping[str, str]) -> Check:
     """One read-only call (list one app) to prove Apple accepts the credentials."""
     config = load_config(env)
     client = AscClient(TokenProvider(config))
     try:
         await client.request("GET", "/v1/apps", params={"limit": "1"})
     except AscError as exc:
-        return f"FAIL Apple said: {exc}"
+        return Check(ok=False, text=f"FAIL Apple said: {exc}")
     finally:
         await client.aclose()
-    return "OK  Apple accepted the credentials (listed apps)"
+    return Check(ok=True, text="OK  Apple accepted the credentials (listed apps)")
 
 
 def cmd_doctor(env: Mapping[str, str], *, online: bool) -> int:
     """Print the doctor results; exit 1 if anything failed."""
-    lines = check_credentials(env)
-    ok = all(line.startswith(("OK", "    ")) for line in lines)
+    checks = check_credentials(env)
+    ok = all(check.ok for check in checks)
     if online and ok:
-        lines.append(asyncio.run(online_check(env)))
-        ok = lines[-1].startswith("OK")
+        checks.append(asyncio.run(online_check(env)))
+        ok = checks[-1].ok
     review_lines = status_text(
         max_days=parse_review_days(env.get("ASC_REVIEW_MAX_DAYS")),
         now=now_local(),
         review=load_record(),
         writes=None,
     )
-    print("\n".join(lines))
+    print("\n".join(check.text for check in checks))
     print()
     print(review_lines)
     return 0 if ok else 1
