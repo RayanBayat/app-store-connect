@@ -2,6 +2,10 @@
 
 ## 0.3.0 (unreleased)
 
+- Changed tool argument names: all arguments are now snake_case. `update_version_localization`
+  takes `whats_new`, `promotional_text`, `marketing_url` and `support_url` (it used `whatsNew`,
+  `promotionalText`, `marketingUrl` and `supportUrl`), and `update_app_info_localization` takes
+  `privacy_policy_url` (it used `privacyPolicyUrl`). The create tools already used these names.
 - Contributor rules: everything in the repository must be readable by a beginner (AGENTS.md).
 - New `get_age_rating` and `update_age_rating`: see and answer Apple's age rating questionnaire,
   which must be fully answered before an update can be submitted (Apple otherwise refuses with

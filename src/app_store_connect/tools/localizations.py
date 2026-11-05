@@ -19,32 +19,71 @@ from app_store_connect.tools.base import (
 from app_store_connect.tools.confirm import change_line, confirm_change
 from app_store_connect.tools.locales import valid_locale
 
-VERSION_TEXT_FIELDS: Final = (
-    "description", "keywords", "whatsNew", "promotionalText", "marketingUrl", "supportUrl",
-)  # fmt: skip
-# Longest allowed value per field. Apple's OpenAPI spec has no maxLength, so these are the
+# The one table that connects the name of a tool argument (snake_case, what the model types) to
+# the name of Apple's attribute (camelCase, what goes in the request). Every update and create
+# tool below reads it, so a field is spelled in exactly one place.
+ARGUMENT_TO_ATTRIBUTE: Final = {
+    "description": "description",
+    "keywords": "keywords",
+    "whats_new": "whatsNew",
+    "promotional_text": "promotionalText",
+    "marketing_url": "marketingUrl",
+    "support_url": "supportUrl",
+    "name": "name",
+    "subtitle": "subtitle",
+    "privacy_policy_url": "privacyPolicyUrl",
+}
+# The text arguments of each kind of localization.
+VERSION_TEXT_ARGUMENTS: Final = (
+    "description",
+    "keywords",
+    "whats_new",
+    "promotional_text",
+    "marketing_url",
+    "support_url",
+)
+INFO_TEXT_ARGUMENTS: Final = ("name", "subtitle", "privacy_policy_url")
+# When creating an app info localization the name is required, so only these two are optional.
+INFO_OPTIONAL_ARGUMENTS: Final = ("subtitle", "privacy_policy_url")
+# Longest allowed value per argument. Apple's OpenAPI spec has no maxLength, so these are the
 # limits Apple documents in App Store Connect Help ("Platform version information" and
 # "App information", checked 2026-11-03); the URL limit is our own conservative cap (Apple
-# documents none). Characters, except fields in BYTE_LIMITED_FIELDS. A value over the limit
-# is refused before anything is read or shown: Apple would reject it anyway.
+# documents none). Characters, except arguments in BYTE_LIMITED_ARGUMENTS. A value over the
+# limit is refused before anything is read or shown: Apple would reject it anyway.
 FIELD_LIMITS: Final = {
     "description": 4000,
     "keywords": 100,
-    "whatsNew": 4000,
-    "promotionalText": 170,
-    "marketingUrl": 2048,
-    "supportUrl": 2048,
+    "whats_new": 4000,
+    "promotional_text": 170,
+    "marketing_url": 2048,
+    "support_url": 2048,
     "name": 30,
     "subtitle": 30,
-    "privacyPolicyUrl": 2048,
+    "privacy_policy_url": 2048,
 }
 # Apple counts keywords in bytes ("up to 100 bytes"), so å, ä and ö count as 2 each.
-BYTE_LIMITED_FIELDS: Final = frozenset({"keywords"})
-# Shortest allowed value per field (Help: the name "must be at least two characters").
+BYTE_LIMITED_ARGUMENTS: Final = frozenset({"keywords"})
+# Shortest allowed value per argument (Help: the name "must be at least two characters").
 FIELD_MINIMUMS: Final = {"name": 2}
+
+# Apple's own attribute names, as they appear in what the read tools return.
+VERSION_TEXT_FIELDS: Final = tuple(ARGUMENT_TO_ATTRIBUTE[arg] for arg in VERSION_TEXT_ARGUMENTS)
+INFO_TEXT_FIELDS: Final = tuple(ARGUMENT_TO_ATTRIBUTE[arg] for arg in INFO_TEXT_ARGUMENTS)
 VERSION_FIELDS: Final = ("locale", *VERSION_TEXT_FIELDS)
-INFO_TEXT_FIELDS: Final = ("name", "subtitle", "privacyPolicyUrl")
 INFO_FIELDS: Final = ("locale", *INFO_TEXT_FIELDS)
+
+
+def to_apple_attributes(values: dict[str, str]) -> dict[str, str]:
+    """Rename a {tool argument: value} dict to {Apple attribute: value}."""
+    return {ARGUMENT_TO_ATTRIBUTE[argument]: value for argument, value in values.items()}
+
+
+def text_properties(argument_names: tuple[str, ...]) -> dict[str, Any]:
+    """The tool-schema entries for text arguments, each with its length limit."""
+    return {
+        argument: string_prop(f"The {argument}.", maxLength=FIELD_LIMITS[argument])
+        for argument in argument_names
+    }
 
 
 async def get_version_localizations(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -77,27 +116,52 @@ async def get_app_info_localizations(ctx: ToolContext, args: dict[str, Any]) -> 
     return to_text(result)
 
 
-def check_limit(name: str, value: str) -> None:
-    """Refuse a value that is longer (or shorter) than Apple allows for `name`."""
-    if name in BYTE_LIMITED_FIELDS:
+def check_limit(argument: str, value: str) -> None:
+    """Refuse a value that is longer (or shorter) than Apple allows for this argument."""
+    if argument in BYTE_LIMITED_ARGUMENTS:
         size, unit = len(value.encode("utf-8")), "bytes (letters like å, ä, ö count as 2)"
     else:
         size, unit = len(value), "characters"
-    if size > FIELD_LIMITS[name]:
-        raise ToolInputError(f"{name} is {size} {unit}; Apple allows at most {FIELD_LIMITS[name]}.")
-    minimum = FIELD_MINIMUMS.get(name, 0)
+    if size > FIELD_LIMITS[argument]:
+        raise ToolInputError(
+            f"{argument} is {size} {unit}; Apple allows at most {FIELD_LIMITS[argument]}."
+        )
+    minimum = FIELD_MINIMUMS.get(argument, 0)
     if len(value) < minimum:
-        raise ToolInputError(f"{name} is {len(value)} characters; Apple needs at least {minimum}.")
+        raise ToolInputError(
+            f"{argument} is {len(value)} characters; Apple needs at least {minimum}."
+        )
 
 
-def requested_changes(args: dict[str, Any], fields: tuple[str, ...]) -> dict[str, str]:
-    """Collect the text fields the model wants to change; at least one is required."""
-    changes = {name: value for name in fields if (value := optional_str(args, name)) is not None}
+def requested_changes(args: dict[str, Any], argument_names: tuple[str, ...]) -> dict[str, str]:
+    """Collect the text arguments the model wants to change (empty text clears a field).
+
+    At least one is required. The result is keyed by argument name.
+    """
+    changes: dict[str, str] = {}
+    for argument in argument_names:
+        value = optional_str(args, argument)
+        if value is not None:
+            changes[argument] = value
     if not changes:
-        raise ToolInputError(f"Give at least one of: {', '.join(fields)}.")
-    for name, value in changes.items():
-        check_limit(name, value)
+        raise ToolInputError(f"Give at least one of: {', '.join(argument_names)}.")
+    for argument, value in changes.items():
+        check_limit(argument, value)
     return changes
+
+
+def given_texts(args: dict[str, Any], argument_names: tuple[str, ...]) -> dict[str, str]:
+    """Collect the optional text arguments that were given (non-empty), checked against limits.
+
+    Used when creating: an empty text is the same as not giving it. Keyed by argument name.
+    """
+    texts: dict[str, str] = {}
+    for argument in argument_names:
+        value = optional_str(args, argument)
+        if value:
+            check_limit(argument, value)
+            texts[argument] = value
+    return texts
 
 
 async def update_localization(
@@ -106,23 +170,29 @@ async def update_localization(
     *,
     template: str,
     kind: str,
-    fields: tuple[str, ...],
+    argument_names: tuple[str, ...],
     title: str,
 ) -> str:
     """Show old -> new for each changed field, ask the human, then PATCH only those fields."""
-    loc_id = require_str(args, "localization_id")
-    changes = requested_changes(args, fields)
-    current = (await ctx.client.request("GET", template, item_id=loc_id))["data"]
+    localization_id = require_id(args, "localization_id")
+    changes = requested_changes(args, argument_names)
+    current = (await ctx.client.request("GET", template, item_id=localization_id))["data"]
     old = current.get("attributes") or {}
-    changed = {k: v for k, v in changes.items() if old.get(k) != v}
+    changed = {
+        argument: value
+        for argument, value in changes.items()
+        if old.get(ARGUMENT_TO_ATTRIBUTE[argument]) != value
+    }
     if not changed:
         return "Nothing to change: the new values are the same as the current ones."
-    lines = [f"Language: {old.get('locale')}  (localization {loc_id})"]
-    lines += [change_line(name, old.get(name), value) for name, value in changed.items()]
+    lines = [f"Language: {old.get('locale')}  (localization {localization_id})"]
+    for argument, value in changed.items():
+        lines.append(change_line(argument, old.get(ARGUMENT_TO_ATTRIBUTE[argument]), value))
     await confirm_change(ctx, title, lines)
-    body = {"data": {"type": kind, "id": loc_id, "attributes": changed}}
-    data = await ctx.client.request("PATCH", template, item_id=loc_id, body=body)
-    return "Updated: " + to_text(summarize(data["data"], tuple(changed), wrap=tuple(changed)))
+    attributes = to_apple_attributes(changed)
+    body = {"data": {"type": kind, "id": localization_id, "attributes": attributes}}
+    data = await ctx.client.request("PATCH", template, item_id=localization_id, body=body)
+    return "Updated: " + to_text(summarize(data["data"], tuple(attributes), wrap=tuple(attributes)))
 
 
 async def update_version_localization(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -132,7 +202,7 @@ async def update_version_localization(ctx: ToolContext, args: dict[str, Any]) ->
         args,
         template="/v1/appStoreVersionLocalizations/{id}",
         kind="appStoreVersionLocalizations",
-        fields=VERSION_TEXT_FIELDS,
+        argument_names=VERSION_TEXT_ARGUMENTS,
         title="Change the App Store text of a version",
     )
 
@@ -144,42 +214,17 @@ async def update_app_info_localization(ctx: ToolContext, args: dict[str, Any]) -
         args,
         template="/v1/appInfoLocalizations/{id}",
         kind="appInfoLocalizations",
-        fields=INFO_TEXT_FIELDS,
+        argument_names=INFO_TEXT_ARGUMENTS,
         title="Change the app name / subtitle / privacy URL",
     )
 
 
-VERSION_CREATE_ARGS: Final = {
-    "description": "description",
-    "keywords": "keywords",
-    "whats_new": "whatsNew",
-    "promotional_text": "promotionalText",
-    "marketing_url": "marketingUrl",
-    "support_url": "supportUrl",
-}  # tool argument -> Apple attribute
-INFO_CREATE_ARGS: Final = {
-    "subtitle": "subtitle",
-    "privacy_policy_url": "privacyPolicyUrl",
-}
-
-
-def collect_attributes(args: dict[str, Any], mapping: dict[str, str]) -> dict[str, str]:
-    """Collect the optional text arguments that were given (non-empty), checked against limits."""
-    attributes: dict[str, str] = {}
-    for arg, attribute in mapping.items():
-        value = optional_str(args, arg)
-        if value:
-            check_limit(attribute, value)
-            attributes[attribute] = value
-    return attributes
-
-
 async def confirm_creation(
-    ctx: ToolContext, title: str, context_lines: list[str], attributes: dict[str, str]
+    ctx: ToolContext, title: str, context_lines: list[str], texts: dict[str, str]
 ) -> None:
-    """Show every field that will be set (in full, escaped), and ask the human."""
+    """Show every text that will be set (in full, escaped), and ask the human."""
     lines = [*context_lines]
-    lines += [change_line(n, None, v) for n, v in attributes.items() if n != "locale"]
+    lines += [change_line(argument, None, value) for argument, value in texts.items()]
     await confirm_change(ctx, title, lines)
 
 
@@ -206,9 +251,10 @@ async def create_version_localization(ctx: ToolContext, args: dict[str, Any]) ->
     """Add a new language to an App Store version."""
     version_id = require_id(args, "version_id")
     locale = valid_locale(require_str(args, "locale"))
-    attributes = {"locale": locale, **collect_attributes(args, VERSION_CREATE_ARGS)}
+    texts = given_texts(args, VERSION_TEXT_ARGUMENTS)
     context = [f"Version ID: {version_id}", f"New language: {locale}"]
-    await confirm_creation(ctx, "Add a language to an App Store version", context, attributes)
+    await confirm_creation(ctx, "Add a language to an App Store version", context, texts)
+    attributes = {"locale": locale, **to_apple_attributes(texts)}
     parent = ("appStoreVersion", "appStoreVersions", version_id)
     body = creation_body("appStoreVersionLocalizations", attributes, parent)
     data = await ctx.client.request("POST", "/v1/appStoreVersionLocalizations", body=body)
@@ -221,9 +267,10 @@ async def create_app_info_localization(ctx: ToolContext, args: dict[str, Any]) -
     locale = valid_locale(require_str(args, "locale"))
     name = require_str(args, "name")
     check_limit("name", name)
-    attributes = {"locale": locale, "name": name, **collect_attributes(args, INFO_CREATE_ARGS)}
+    texts = {"name": name, **given_texts(args, INFO_OPTIONAL_ARGUMENTS)}
     context = [f"App info ID: {info_id}", f"New language: {locale}"]
-    await confirm_creation(ctx, "Add a language to the app name / subtitle", context, attributes)
+    await confirm_creation(ctx, "Add a language to the app name / subtitle", context, texts)
+    attributes = {"locale": locale, **to_apple_attributes(texts)}
     body = creation_body("appInfoLocalizations", attributes, ("appInfo", "appInfos", info_id))
     data = await ctx.client.request("POST", "/v1/appInfoLocalizations", body=body)
     return created_text(data, attributes)
@@ -259,10 +306,7 @@ WRITE_TOOLS: Final[list[ToolSpec]] = [
         "get_version_localizations to find the localization ID). Asks the user to confirm.",
         properties={
             "localization_id": string_prop("The version localization's ID."),
-            **{
-                name: string_prop(f"New {name}.", maxLength=FIELD_LIMITS[name])
-                for name in VERSION_TEXT_FIELDS
-            },
+            **text_properties(VERSION_TEXT_ARGUMENTS),
         },
         required=("localization_id",),
         handler=update_version_localization,
@@ -274,10 +318,7 @@ WRITE_TOOLS: Final[list[ToolSpec]] = [
         "get_app_info_localizations to find the ID). Asks the user to confirm.",
         properties={
             "localization_id": string_prop("The app info localization's ID."),
-            **{
-                name: string_prop(f"New {name}.", maxLength=FIELD_LIMITS[name])
-                for name in INFO_TEXT_FIELDS
-            },
+            **text_properties(INFO_TEXT_ARGUMENTS),
         },
         required=("localization_id",),
         handler=update_app_info_localization,
@@ -292,10 +333,7 @@ WRITE_TOOLS: Final[list[ToolSpec]] = [
         properties={
             "version_id": string_prop("The App Store version's ID."),
             "locale": string_prop("App Store locale code, e.g. sv, en-US, zh-Hans."),
-            **{
-                arg: string_prop(f"The {attr}.", maxLength=FIELD_LIMITS[attr])
-                for arg, attr in VERSION_CREATE_ARGS.items()
-            },
+            **text_properties(VERSION_TEXT_ARGUMENTS),
         },
         required=("version_id", "locale"),
         handler=create_version_localization,
@@ -311,10 +349,7 @@ WRITE_TOOLS: Final[list[ToolSpec]] = [
             "app_info_id": string_prop("The app info's ID (see get_app_info_localizations)."),
             "locale": string_prop("App Store locale code, e.g. sv, en-US, zh-Hans."),
             "name": string_prop("The app name in that language.", maxLength=FIELD_LIMITS["name"]),
-            **{
-                arg: string_prop(f"The {attr}.", maxLength=FIELD_LIMITS[attr])
-                for arg, attr in INFO_CREATE_ARGS.items()
-            },
+            **text_properties(INFO_OPTIONAL_ARGUMENTS),
         },
         required=("app_info_id", "locale", "name"),
         handler=create_app_info_localization,

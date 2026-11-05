@@ -94,13 +94,13 @@ async def test_form_escapes_bidi_controls_and_cannot_fake_extra_lines(tmp_path: 
 FIELD_LIMITS = [
     ("update_version_localization", "L1", "description", 4000),
     ("update_version_localization", "L1", "keywords", 100),
-    ("update_version_localization", "L1", "whatsNew", 4000),
-    ("update_version_localization", "L1", "promotionalText", 170),
-    ("update_version_localization", "L1", "marketingUrl", 2048),
-    ("update_version_localization", "L1", "supportUrl", 2048),
+    ("update_version_localization", "L1", "whats_new", 4000),
+    ("update_version_localization", "L1", "promotional_text", 170),
+    ("update_version_localization", "L1", "marketing_url", 2048),
+    ("update_version_localization", "L1", "support_url", 2048),
     ("update_app_info_localization", "I1", "name", 30),
     ("update_app_info_localization", "I1", "subtitle", 30),
-    ("update_app_info_localization", "I1", "privacyPolicyUrl", 2048),
+    ("update_app_info_localization", "I1", "privacy_policy_url", 2048),
 ]
 
 

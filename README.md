@@ -50,7 +50,7 @@ The confirmation forms stop Claude from making changes on its own. They don't pr
 | **Change** (with `ASC_ALLOW_WRITES`, each confirmed) | Edit store texts, add a language, change the primary language, create a version, pick its build, add or remove TestFlight testers, add a build to a group, submit for beta review, submit for App Review, reply to a customer review, upload screenshots, turn an app on or off in chosen countries, make a free app free in all countries, answer the age rating questions |
 | **Maintenance** | Status, monthly report, confirm the review |
 
-Text written by people outside your team, such as customer reviews, is marked as untrusted, so Claude won't follow instructions inside it. The full tool names are in [docs/design.md](docs/design.md#tools).
+Text written by people outside your team, such as customer reviews, is marked as untrusted, so Claude won't follow instructions inside it. The full tool names are in [docs/design.md](docs/design.md#tools). Every tool argument is written in snake_case (for example `whats_new` and `privacy_policy_url`).
 
 ## Monthly review
 

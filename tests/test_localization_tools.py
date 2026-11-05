@@ -222,3 +222,31 @@ async def test_primary_locale_unchanged_needs_no_request(tmp_path: Path) -> None
 def test_locale_list_has_documented_examples_and_only_plain_codes() -> None:
     assert {"sv", "en-US", "zh-Hans", "pt-BR", "de-DE"} <= APP_STORE_LOCALES
     assert all(code.replace("-", "").isalnum() for code in APP_STORE_LOCALES)
+
+
+async def test_update_tools_take_snake_case_arguments_and_send_apple_attribute_names(
+    tmp_path: Path,
+) -> None:
+    fake = FakeApple()
+    old_texts = resource(
+        "appStoreVersionLocalizations", "l1", locale="sv", whatsNew="Old", supportUrl="https://old"
+    )
+    fake.on("GET", "/v1/appStoreVersionLocalizations/l1", one(old_texts))
+    fake.on("PATCH", "/v1/appStoreVersionLocalizations/l1", one(old_texts))
+    old_info = resource("appInfoLocalizations", "i1", locale="sv", privacyPolicyUrl="https://old")
+    fake.on("GET", "/v1/appInfoLocalizations/i1", one(old_info))
+    fake.on("PATCH", "/v1/appInfoLocalizations/i1", one(old_info))
+    async with connected(tmp_path, fake, allow_writes=True, elicit=Answers()) as c:
+        await c.call_tool(
+            "update_version_localization",
+            {"localization_id": "l1", "whats_new": "New", "support_url": "https://new"},
+        )
+        await c.call_tool(
+            "update_app_info_localization",
+            {"localization_id": "i1", "privacy_policy_url": "https://new"},
+        )
+    sent = [write.body["data"]["attributes"] for write in fake.writes()]
+    assert sent == [
+        {"whatsNew": "New", "supportUrl": "https://new"},
+        {"privacyPolicyUrl": "https://new"},
+    ]

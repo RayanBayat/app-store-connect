@@ -23,6 +23,7 @@ A short guide for contributors: how the server works, where the code lives, and 
   `add_beta_tester`, `remove_beta_tester`, `add_build_to_beta_group`,
   `submit_build_for_beta_review`, `submit_for_app_review`, `reply_to_customer_review`,
   `upload_screenshot`, `set_territory_availability`, `set_free_price`, `update_age_rating`.
+- **Argument names are always snake_case**, even for text fields that Apple spells in camelCase. The update and create tools for store text share one table (`ARGUMENT_TO_ATTRIBUTE` in `tools/localizations.py`): `whats_new` is sent as `whatsNew`, `promotional_text` as `promotionalText`, `marketing_url` as `marketingUrl`, `support_url` as `supportUrl` and `privacy_policy_url` as `privacyPolicyUrl`. The read tools still show Apple's own names.
 - **Maintenance:** `maintenance_status`, `maintenance_report`, `maintenance_confirm_review`.
 
 ## Asking the human: two protocol versions
