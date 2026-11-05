@@ -31,7 +31,7 @@ from .helpers import FakeClock
 
 ARGS = {"localization_id": "L1", "description": "new description"}
 TOOL = "update_version_localization"
-LOC = "appStoreVersionLocalizations"
+VERSION_LOCALIZATION = "appStoreVersionLocalizations"
 
 
 def loc_fake(old: str = "old description") -> FakeApple:
@@ -39,12 +39,12 @@ def loc_fake(old: str = "old description") -> FakeApple:
     fake.on(
         "GET",
         "/v1/appStoreVersionLocalizations/L1",
-        one(resource(LOC, "L1", locale="en-US", description=old)),
+        one(resource(VERSION_LOCALIZATION, "L1", locale="en-US", description=old)),
     )
     fake.on(
         "PATCH",
         "/v1/appStoreVersionLocalizations/L1",
-        one(resource(LOC, "L1", description="new description")),
+        one(resource(VERSION_LOCALIZATION, "L1", description="new description")),
     )
     return fake  # fmt: skip
 
@@ -292,7 +292,9 @@ async def test_old_value_changed_between_form_and_retry_shows_a_fresh_form(
         fake.on(  # someone edits the text on Apple while the human reads the form
             "GET",
             "/v1/appStoreVersionLocalizations/L1",
-            one(resource(LOC, "L1", locale="en-US", description="second old value")),
+            one(
+                resource(VERSION_LOCALIZATION, "L1", locale="en-US", description="second old value")
+            ),
         )
         again = await c.session.call_tool(
             TOOL,
@@ -321,7 +323,7 @@ async def test_sdk_client_loop_handles_a_changed_old_value_by_asking_again(
     def change_on_first_form(count: int) -> None:
         if count == 1:
             fake.on("GET", "/v1/appStoreVersionLocalizations/L1",
-                    one(resource(LOC, "L1", locale="en-US", description="second old value")))  # fmt: skip
+                    one(resource(VERSION_LOCALIZATION, "L1", locale="en-US", description="second old value")))  # fmt: skip
 
     answers.on_form = change_on_first_form
     async with connected(

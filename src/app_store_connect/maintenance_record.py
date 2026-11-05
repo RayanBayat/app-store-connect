@@ -204,11 +204,11 @@ def _to_json(review: MaintenanceRecord) -> dict[str, Any]:
         "code_commit": review.code_commit,
         "history": [
             {
-                "reviewed_at": h.reviewed_at,
-                "spec_version": h.spec_version,
-                "outcome": h.outcome,
+                "reviewed_at": entry.reviewed_at,
+                "spec_version": entry.spec_version,
+                "outcome": entry.outcome,
             }
-            for h in review.history
+            for entry in review.history
         ],
     }
 

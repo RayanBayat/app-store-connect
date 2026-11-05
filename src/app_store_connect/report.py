@@ -175,8 +175,10 @@ def load_spec(client: httpx.Client) -> SpecInfo:
 
 def endpoint_problems(spec: SpecInfo) -> tuple[list[Endpoint], list[Endpoint]]:
     """Return (missing, deprecated) endpoints among those we use, each sorted."""
-    missing = sorted(e for e in ENDPOINTS_USED if e not in spec.operations)
-    deprecated = sorted(e for e in ENDPOINTS_USED if spec.operations.get(e) is True)
+    missing = sorted(endpoint for endpoint in ENDPOINTS_USED if endpoint not in spec.operations)
+    deprecated = sorted(
+        endpoint for endpoint in ENDPOINTS_USED if spec.operations.get(endpoint) is True
+    )
     return missing, deprecated
 
 
@@ -195,8 +197,8 @@ def spec_section(spec: SpecInfo) -> list[str]:
     missing, deprecated = endpoint_problems(spec)
     if not missing and not deprecated:
         return [*lines, f"All {len(ENDPOINTS_USED)} endpoints exist and none is deprecated.", ""]
-    lines += [f"- **MISSING**: `{m} {p}`" for m, p in missing]
-    lines += [f"- **DEPRECATED**: `{m} {p}`" for m, p in deprecated]
+    lines += [f"- **MISSING**: `{method} {path}`" for method, path in missing]
+    lines += [f"- **DEPRECATED**: `{method} {path}`" for method, path in deprecated]
     return [*lines, ""]
 
 
@@ -233,7 +235,7 @@ def area_section(spec: SpecInfo) -> list[str]:
         in_area = {path for _, path in spec.operations if area_of(path) == root}
         extra = sorted(in_area - used_paths)
         if extra:
-            shown = ", ".join(f"`{p}`" for p in extra[:3])
+            shown = ", ".join(f"`{part}`" for part in extra[:3])
             lines.append(f"- `{root}`: {len(extra)} not used, e.g. {shown}")
     return [*lines, ""]
 
@@ -286,7 +288,7 @@ def direct_packages() -> list[osv.Query]:
 def version_tuple(text: str) -> tuple[int, ...]:
     """The leading numeric part of a version ('1.2.3rc1' -> (1, 2, 3))."""
     match = re.match(r"\d+(?:\.\d+)*", text)
-    return tuple(int(p) for p in match.group(0).split(".")) if match else ()
+    return tuple(int(part) for part in match.group(0).split(".")) if match else ()
 
 
 def is_outdated(installed: str, latest: str) -> bool:
@@ -304,7 +306,11 @@ def latest_stable(feed: str) -> str | None:
     The feed is read with a plain pattern, not an XML parser, so nothing in it can trigger
     entity tricks; we only ever look at the `<title>` of each `<item>`.
     """
-    stable = [t.strip() for t in _FEED_TITLE.findall(feed) if _STABLE_VERSION.fullmatch(t.strip())]
+    stable = [
+        title.strip()
+        for title in _FEED_TITLE.findall(feed)
+        if _STABLE_VERSION.fullmatch(title.strip())
+    ]
     return max(stable, key=version_tuple, default=None)
 
 

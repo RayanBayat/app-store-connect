@@ -169,4 +169,4 @@ def test_osv_summary_in_the_report_is_wrapped() -> None:
 def test_osv_describe_keeps_raw_summary_and_wraps_only_on_output() -> None:
     handler = lambda _r: httpx.Response(200, json={"summary": "S", "affected": []})  # noqa: E731
     client = httpx.Client(transport=httpx.MockTransport(handler))
-    assert osv.describe(client, ("p", "1"), "ID").summary == "S"
+    assert osv.fetch_vulnerability(client, ("p", "1"), "ID").summary == "S"

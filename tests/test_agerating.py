@@ -24,7 +24,7 @@ from .apple_fake import (
     text_of,
 )
 
-DECL = "/v1/ageRatingDeclarations/d1"
+DECLARATION_PATH = "/v1/ageRatingDeclarations/d1"
 
 
 def age_fake(state: str = "PREPARE_FOR_SUBMISSION", **answers: Any) -> FakeApple:
@@ -51,7 +51,7 @@ def age_fake(state: str = "PREPARE_FOR_SUBMISSION", **answers: Any) -> FakeApple
         "/v1/appInfos/i0/ageRatingDeclaration",
         one(resource("ageRatingDeclarations", "d0", advertising=False, gambling=False)),
     )
-    fake.on("PATCH", DECL, one(resource("ageRatingDeclarations", "d1")))
+    fake.on("PATCH", DECLARATION_PATH, one(resource("ageRatingDeclarations", "d1")))
     return fake
 
 
@@ -124,7 +124,7 @@ async def test_accept_sends_exactly_one_patch(tmp_path: Path, protocol: str) -> 
     assert [(w.method, w.path, w.body) for w in fake.writes()] == [
         (
             "PATCH",
-            DECL,
+            DECLARATION_PATH,
             {
                 "data": {
                     "type": "ageRatingDeclarations",

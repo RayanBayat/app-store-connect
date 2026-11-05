@@ -47,8 +47,8 @@ async def list_screenshot_sets(ctx: ToolContext, args: dict[str, Any]) -> str:
                 **summarize(item, ("screenshotDisplayType",)),
                 "screenshot_count": len(shots),
                 "screenshots": [
-                    summarize(s, ("fileName", "assetDeliveryState"), wrap=("fileName",))
-                    for s in shots
+                    summarize(shot, ("fileName", "assetDeliveryState"), wrap=("fileName",))
+                    for shot in shots
                 ],
             }
         )
@@ -124,10 +124,10 @@ def check_operations(operations: Any, size: int) -> list[dict[str, Any]]:
     if not isinstance(operations, list) or not 0 < len(operations) <= MAX_PARTS:
         raise AscError("Apple returned unusable upload instructions.")
     spans: list[tuple[int, int]] = []
-    for op in operations:
-        if not isinstance(op, dict):
+    for operation in operations:
+        if not isinstance(operation, dict):
             raise AscError("Apple returned an invalid upload part.")
-        offset, length = op.get("offset"), op.get("length")
+        offset, length = operation.get("offset"), operation.get("length")
         if (
             isinstance(offset, bool)
             or isinstance(length, bool)
@@ -137,10 +137,12 @@ def check_operations(operations: Any, size: int) -> list[dict[str, Any]]:
             raise AscError("Apple returned an invalid upload part.")
         if offset < 0 or length <= 0 or offset + length > size:
             raise AscError("Apple returned an upload part outside the file.")
-        if not isinstance(op.get("url"), str) or not isinstance(op.get("method"), str):
+        if not isinstance(operation.get("url"), str) or not isinstance(
+            operation.get("method"), str
+        ):
             raise AscError("Apple returned an invalid upload part.")
-        check_upload_target(op["method"], op["url"])
-        _check_headers(op.get("requestHeaders"))
+        check_upload_target(operation["method"], operation["url"])
+        _check_headers(operation.get("requestHeaders"))
         spans.append((offset, offset + length))
     spans.sort()
     if any(spans[i][1] > spans[i + 1][0] for i in range(len(spans) - 1)):
@@ -155,8 +157,10 @@ def _check_headers(headers: Any) -> None:
     if headers is None:
         return
     ok = isinstance(headers, list) and all(
-        isinstance(h, dict) and isinstance(h.get("name"), str) and isinstance(h.get("value"), str)
-        for h in headers
+        isinstance(header, dict)
+        and isinstance(header.get("name"), str)
+        and isinstance(header.get("value"), str)
+        for header in headers
     )
     if not ok:
         raise AscError("Apple returned invalid upload headers.")
@@ -164,10 +168,14 @@ def _check_headers(headers: Any) -> None:
 
 async def send_parts(ctx: ToolContext, data: bytes, operations: list[dict[str, Any]]) -> None:
     """Upload each part to its presigned URL (no Authorization header is ever added)."""
-    for op in operations:
-        chunk = data[op["offset"] : op["offset"] + op["length"]]
-        headers = [(h["name"], h["value"]) for h in op.get("requestHeaders") or []]
-        await ctx.client.upload_part(str(op["method"]), str(op["url"]), headers, chunk)
+    for operation in operations:
+        chunk = data[operation["offset"] : operation["offset"] + operation["length"]]
+        headers = [
+            (header["name"], header["value"]) for header in operation.get("requestHeaders") or []
+        ]
+        await ctx.client.upload_part(
+            str(operation["method"]), str(operation["url"]), headers, chunk
+        )
 
 
 async def upload_screenshot(ctx: ToolContext, args: dict[str, Any]) -> str:

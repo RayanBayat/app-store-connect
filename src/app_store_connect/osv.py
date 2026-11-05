@@ -71,17 +71,21 @@ def make_query(name: str, version: str, page_token: str | None = None) -> dict[s
 
 def query_vuln_ids(client: httpx.Client, queries: list[Query]) -> dict[Query, set[str]]:
     """Return vulnerability ids per query, following `next_page_token` pagination."""
-    found: dict[Query, set[str]] = {q: set() for q in queries}
-    pending: list[tuple[Query, str | None]] = [(q, None) for q in queries]
+    found: dict[Query, set[str]] = {query: set() for query in queries}
+    pending: list[tuple[Query, str | None]] = [(query, None) for query in queries]
     pages: dict[Query, int] = dict.fromkeys(queries, 0)
     while pending:
         chunk, pending = pending[:BATCH_SIZE], pending[BATCH_SIZE:]
-        body = {"queries": [make_query(n, v, tok) for (n, v), tok in chunk]}
+        body = {
+            "queries": [
+                make_query(name, version, page_token) for (name, version), page_token in chunk
+            ]
+        }
         results = _request_json(client, "POST", OSV_BATCH_URL, body).get("results", [])
         if len(results) != len(chunk):
             raise OsvError("OSV returned a different number of results than queries")
         for (query, _), result in zip(chunk, results, strict=True):
-            found[query].update(v["id"] for v in result.get("vulns", []))
+            found[query].update(vuln["id"] for vuln in result.get("vulns", []))
             if token := result.get("next_page_token"):
                 pages[query] += 1
                 if pages[query] > MAX_PAGES_PER_QUERY:
@@ -94,12 +98,13 @@ def fixed_versions(vuln: dict[str, Any]) -> tuple[str, ...]:
     """Collect every `fixed` version mentioned in an OSV record."""
     fixed: set[str] = set()
     for affected in vuln.get("affected", []):
-        for rng in affected.get("ranges", []):
-            fixed.update(e["fixed"] for e in rng.get("events", []) if "fixed" in e)
+        for version_range in affected.get("ranges", []):
+            events = version_range.get("events", [])
+            fixed.update(event["fixed"] for event in events if "fixed" in event)
     return tuple(sorted(fixed))
 
 
-def describe(client: httpx.Client, query: Query, vuln_id: str) -> Vulnerability:
+def fetch_vulnerability(client: httpx.Client, query: Query, vuln_id: str) -> Vulnerability:
     """Fetch one vulnerability record and turn it into a `Vulnerability`."""
     record = _request_json(client, "GET", OSV_VULN_URL + vuln_id)
     return Vulnerability(
@@ -115,7 +120,7 @@ def check_packages(client: httpx.Client, packages: list[Query]) -> list[Vulnerab
     """Return every known vulnerability affecting the given (name, version) packages."""
     found: list[Vulnerability] = []
     for query, ids in sorted(query_vuln_ids(client, packages).items()):
-        found.extend(describe(client, query, vuln_id) for vuln_id in sorted(ids))
+        found.extend(fetch_vulnerability(client, query, vuln_id) for vuln_id in sorted(ids))
     return found
 
 
@@ -124,9 +129,10 @@ def format_vulnerabilities(vulns: list[Vulnerability]) -> str:
     if not vulns:
         return "No known vulnerabilities found."
     lines: list[str] = []
-    for v in vulns:
-        fixes = ", ".join(v.fixed_in) or "none listed"
+    for vulnerability in vulns:
+        fixes = ", ".join(vulnerability.fixed_in) or "none listed"
         lines.append(
-            f"- `{v.package} {v.version}`: {v.vuln_id} - {untrusted(v.summary)} (fixed in: {fixes})"
+            f"- `{vulnerability.package} {vulnerability.version}`: {vulnerability.vuln_id} - "
+            f"{untrusted(vulnerability.summary)} (fixed in: {fixes})"
         )
     return "\n".join(lines)

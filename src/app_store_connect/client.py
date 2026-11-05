@@ -297,7 +297,11 @@ class AscClient:
     ) -> None:
         """Send one chunk of a file to a presigned upload URL, with NO Authorization header."""
         check_upload_target(method, url)
-        safe = {k: v for k, v in headers if k.lower() not in {"authorization", "cookie"}}
+        safe = {
+            name: value
+            for name, value in headers
+            if name.lower() not in {"authorization", "cookie"}
+        }
         try:
             response = await self._uploads.request(method, url, headers=safe, content=data)
         except httpx.HTTPError as exc:

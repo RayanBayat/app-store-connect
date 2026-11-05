@@ -29,7 +29,7 @@ def _escape_char(char: str) -> str:
 def escape_display(value: object) -> str:
     """Return `value` as text with line breaks shown as a symbol and hidden characters escaped."""
     text = str(value).replace("\r\n", "\n").replace("\r", "\n")
-    return "".join(NEWLINE_SYMBOL if c == "\n" else _escape_char(c) for c in text)
+    return "".join(NEWLINE_SYMBOL if char == "\n" else _escape_char(char) for char in text)
 
 
 # Bracket look-alikes that NFKC does not turn into a plain "[" or "]".
@@ -38,8 +38,8 @@ _CLOSING_LOOKALIKES: Final = "\u27e7\u2046\u3011\u3015\u301b\u2773\u3009\u27e9\u
 _BRACKETS: Final = {
     ord("["): "&#91;",
     ord("]"): "&#93;",
-    **{ord(c): "&#91;" for c in _OPENING_LOOKALIKES},
-    **{ord(c): "&#93;" for c in _CLOSING_LOOKALIKES},
+    **{ord(char): "&#91;" for char in _OPENING_LOOKALIKES},
+    **{ord(char): "&#93;" for char in _CLOSING_LOOKALIKES},
 }
 
 

@@ -76,8 +76,10 @@ class AppServer:
         self._confirmations = ConfirmationBook()
         self._request_state = RequestStateSecurity.ephemeral(ttl=STATE_TTL_SECONDS)
         allow = bool(config and config.allow_writes)
-        self._tools: dict[str, ToolSpec] = {t.name: t for t in all_tools(allow_writes=allow)}
-        self._write_names = {t.name for t in write_tools()}
+        self._tools: dict[str, ToolSpec] = {
+            tool.name: tool for tool in all_tools(allow_writes=allow)
+        }
+        self._write_names = {tool.name for tool in write_tools()}
 
     async def list_tools(
         self, ctx: ServerRequestContext[Any], params: types.PaginatedRequestParams | None
@@ -87,7 +89,7 @@ class AppServer:
         if self.startup_error is not None:
             return types.ListToolsResult(tools=list(MAINTENANCE_TOOLS))
         return types.ListToolsResult(
-            tools=[*(t.to_tool() for t in self._tools.values()), *MAINTENANCE_TOOLS]
+            tools=[*(tool.to_tool() for tool in self._tools.values()), *MAINTENANCE_TOOLS]
         )
 
     async def call_tool(

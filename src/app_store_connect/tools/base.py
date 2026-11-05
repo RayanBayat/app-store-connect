@@ -155,7 +155,7 @@ def summarize(
     untrusted content (see `untrusted`). Missing values stay None.
     """
     attributes = item.get("attributes") or {}
-    chosen = attributes if fields is None else {k: attributes.get(k) for k in fields}
+    chosen = attributes if fields is None else {name: attributes.get(name) for name in fields}
     for name in wrap:
         if chosen.get(name) is not None:
             chosen[name] = wrap_strings(chosen[name])

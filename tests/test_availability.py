@@ -29,7 +29,9 @@ API = "https://api.appstoreconnect.apple.com"
 AV_PATH = "/v2/appAvailabilities/av1/territoryAvailabilities"
 
 
-def ta(code: str, available: bool, statuses: tuple[str, ...] = (), **extra: Any) -> dict[str, Any]:
+def territory_availability(
+    code: str, available: bool, statuses: tuple[str, ...] = (), **extra: Any
+) -> dict[str, Any]:
     item = resource(
         "territoryAvailabilities", f"ta-{code}", available=available,
         contentStatuses=list(statuses), **extra,
@@ -38,7 +40,7 @@ def ta(code: str, available: bool, statuses: tuple[str, ...] = (), **extra: Any)
     return item
 
 
-def av_fake(*items: dict[str, Any], new_territories: bool = False) -> FakeApple:
+def availability_fake(*items: dict[str, Any], new_territories: bool = False) -> FakeApple:
     fake = FakeApple()
     fake.on("GET", "/v1/apps/1", one(resource("apps", "1", name="KörUppNu")))
     fake.on(
@@ -83,10 +85,10 @@ async def read(tmp_path: Path, fake: FakeApple, **args: Any) -> dict[str, Any]:
 
 
 async def test_read_shape_summary_and_status_hints(tmp_path: Path) -> None:
-    fake = av_fake(
-        ta("SWE", False, ("MISSING_RATING",)),
-        ta("USA", False, ("MISSING_RATING", "SOMETHING_NEW")),
-        ta("NOR", True, ("AVAILABLE",), releaseDate="2026-11-01"),
+    fake = availability_fake(
+        territory_availability("SWE", False, ("MISSING_RATING",)),
+        territory_availability("USA", False, ("MISSING_RATING", "SOMETHING_NEW")),
+        territory_availability("NOR", True, ("AVAILABLE",), releaseDate="2026-11-01"),
         new_territories=True,
     )
     add_price(fake, None)
@@ -114,13 +116,17 @@ async def test_every_known_status_has_a_plain_hint() -> None:
 
 
 async def test_read_uses_include_territory_and_follows_pagination(tmp_path: Path) -> None:
-    fake = av_fake()
+    fake = availability_fake()
 
     def pages(request: httpx.Request) -> httpx.Response:
         if request.url.params.get("cursor") == "2":
-            return httpx.Response(200, json=listing(ta("USA", False, ("CANNOT_SELL",))))
+            return httpx.Response(
+                200, json=listing(territory_availability("USA", False, ("CANNOT_SELL",)))
+            )
         nxt = f"{API}{AV_PATH}?cursor=2"
-        return httpx.Response(200, json={**listing(ta("SWE", True)), "links": {"next": nxt}})
+        return httpx.Response(
+            200, json={**listing(territory_availability("SWE", True)), "links": {"next": nxt}}
+        )
 
     fake.on("GET", AV_PATH, pages)
     out = await read(tmp_path, fake)
@@ -131,7 +137,7 @@ async def test_read_uses_include_territory_and_follows_pagination(tmp_path: Path
 
 
 async def test_read_price_free_and_paid(tmp_path: Path) -> None:
-    fake = av_fake(ta("SWE", True))
+    fake = availability_fake(territory_availability("SWE", True))
     add_price(fake, "0.0")
     price = (await read(tmp_path, fake))["price"]
     assert price["baseTerritory"] == "SWE"
@@ -139,7 +145,7 @@ async def test_read_price_free_and_paid(tmp_path: Path) -> None:
         "territory": "SWE", "customerPrice": "0.0", "currency": "SEK", "startDate": None,
     }  # fmt: skip
     assert "free" in price["summary"].lower()
-    fake = av_fake(ta("SWE", True))
+    fake = availability_fake(territory_availability("SWE", True))
     add_price(fake, "9.0")
     assert "9.0 SEK" in (await read(tmp_path, fake))["price"]["summary"]
 
@@ -164,7 +170,7 @@ def test_registration_split() -> None:
 
 
 async def test_write_tools_absent_when_writes_are_off(tmp_path: Path) -> None:
-    async with connected(tmp_path, av_fake()) as client:
+    async with connected(tmp_path, availability_fake()) as client:
         listed = {t.name for t in (await client.list_tools()).tools}
     assert "get_app_availability" in listed
     assert not {"set_territory_availability", "set_free_price"} & listed
@@ -174,11 +180,18 @@ async def test_write_tools_absent_when_writes_are_off(tmp_path: Path) -> None:
 
 
 def patch_fake() -> FakeApple:
-    fake = av_fake(
-        ta("SWE", False, ("MISSING_RATING",)), ta("USA", False), ta("GBR", True), ta("NOR", True)
+    fake = availability_fake(
+        territory_availability("SWE", False, ("MISSING_RATING",)),
+        territory_availability("USA", False),
+        territory_availability("GBR", True),
+        territory_availability("NOR", True),
     )
     for code in ("SWE", "USA", "GBR", "NOR"):
-        fake.on("PATCH", f"/v1/territoryAvailabilities/ta-{code}", one(ta(code, True)))
+        fake.on(
+            "PATCH",
+            f"/v1/territoryAvailabilities/ta-{code}",
+            one(territory_availability(code, True)),
+        )
     return fake
 
 

@@ -233,7 +233,7 @@ _ANSWERS_HELP = (
     + ". Frequency questions take NONE, INFREQUENT_OR_MILD or FREQUENT_OR_INTENSE: "
     + ", ".join(FREQUENCY_QUESTIONS)
     + ". Choices: "
-    + "; ".join(f"{n} = {' / '.join(v)}" for n, (_, v) in CHOICE_QUESTIONS.items())
+    + "; ".join(f"{name} = {' / '.join(values)}" for name, (_, values) in CHOICE_QUESTIONS.items())
     + ". Special key 'all_others': \"none\" answers every yes/no question you did not list "
     "with false and every frequency question you did not list with NONE (it replaces existing "
     "answers too; overrides and kidsAgeBand are left alone). Use it for 'no to everything "

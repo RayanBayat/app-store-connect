@@ -111,12 +111,12 @@ async def fetch_availability(
 def territory_row(item: dict[str, Any]) -> dict[str, Any]:
     """One territory in plain terms: code, available, releaseDate and the reasons."""
     attributes = item.get("attributes") or {}
-    statuses = [str(s) for s in attributes.get("contentStatuses") or []]
+    statuses = [str(status) for status in attributes.get("contentStatuses") or []]
     return {
         "territory": territory_of(item),
         "available": attributes.get("available"),
         "releaseDate": attributes.get("releaseDate"),
-        "contentStatuses": [{"status": s, "meaning": hint(s)} for s in statuses],
+        "contentStatuses": [{"status": status, "meaning": hint(status)} for status in statuses],
     }
 
 
@@ -136,11 +136,13 @@ def availability_summary(rows: list[dict[str, Any]]) -> str:
     blocked: dict[tuple[str, ...], list[str]] = defaultdict(list)
     for row in rows:
         if not row["available"]:
-            blocked[tuple(e["status"] for e in row["contentStatuses"])].append(row["territory"])
+            blocked[tuple(entry["status"] for entry in row["contentStatuses"])].append(
+                row["territory"]
+            )
     for statuses, codes in blocked.items():
-        named = ", ".join(describe(c) for c in codes[:NAMED_IN_SUMMARY])
+        named = ", ".join(describe(code) for code in codes[:NAMED_IN_SUMMARY])
         more = f" and {len(codes) - NAMED_IN_SUMMARY} more" if len(codes) > NAMED_IN_SUMMARY else ""
-        reasons = "; ".join(f"{s} ({hint(s)})" for s in statuses) or NO_STATUS
+        reasons = "; ".join(f"{status} ({hint(status)})" for status in statuses) or NO_STATUS
         parts.append(f"{named}{more}: not available - reasons: {reasons}")
     return " ".join(parts)
 
@@ -189,15 +191,16 @@ async def create_availability(ctx: ToolContext, app_id: str, codes: list[str], l
     by Apple; we send False so that nothing is sold anywhere that the human did not see.
     """
     known = {
-        t["id"] for t in await ctx.client.paginate("/v1/territories", max_items=MAX_TERRITORIES)
+        territory["id"]
+        for territory in await ctx.client.paginate("/v1/territories", max_items=MAX_TERRITORIES)
     }
-    unknown = [c for c in codes if c not in known]
+    unknown = [code for code in codes if code not in known]
     if unknown:
         raise ToolInputError(f"Apple does not know these territory codes: {', '.join(unknown)}.")
     lines = [
         f"App: {label}",
         "The app has no availability yet, so it is on sale nowhere.",
-        *(f"{describe(c)}: not available  ->  available" for c in codes),
+        *(f"{describe(code)}: not available  ->  available" for code in codes),
         "All other territories stay not available, and new territories Apple adds later "
         "are not switched on automatically.",
     ]
@@ -210,7 +213,7 @@ async def create_availability(ctx: ToolContext, app_id: str, codes: list[str], l
             "relationships": {
                 "app": relationship("apps", app_id),
                 "territoryAvailabilities": {
-                    "data": [{"type": "territoryAvailabilities", "id": r} for r in refs]
+                    "data": [{"type": "territoryAvailabilities", "id": ref} for ref in refs]
                 },
             },
         },
@@ -225,7 +228,7 @@ async def create_availability(ctx: ToolContext, app_id: str, codes: list[str], l
         ],
     }
     await ctx.client.request("POST", "/v2/appAvailabilities", body=body)
-    return f"Created the availability: on sale in {', '.join(describe(c) for c in codes)}."
+    return f"Created the availability: on sale in {', '.join(describe(code) for code in codes)}."
 
 
 def is_available(item: dict[str, Any]) -> bool:
@@ -307,7 +310,7 @@ async def set_territory_availability(ctx: ToolContext, args: dict[str, Any]) -> 
     lines = territory_form_lines(app_text, codes, by_code, wanted)
     await confirm_change(ctx, "Change where the app is on sale", lines)
     done = await patch_territories(ctx, changes, wanted)
-    return f"The app is now {state_word(wanted)} in: {', '.join(describe(c) for c in done)}."
+    return f"The app is now {state_word(wanted)} in: {', '.join(describe(code) for code in done)}."
 
 
 READ_TOOLS: Final[list[ToolSpec]] = [
