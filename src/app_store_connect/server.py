@@ -34,7 +34,13 @@ from app_store_connect.maintenance import NAMES, TOOLS, Maintenance, text_result
 from app_store_connect.maintenance_record import check_record, load_record, now_local
 from app_store_connect.paths import tildify
 from app_store_connect.tools import all_tools, write_tools
-from app_store_connect.tools.base import ToolContext, ToolInputError, ToolRefusedError, ToolSpec
+from app_store_connect.tools.base import (
+    ISSUES_URL,
+    ToolContext,
+    ToolInputError,
+    ToolRefusedError,
+    ToolSpec,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -159,9 +165,15 @@ class AppServer:
             return signal.result
         except (ToolInputError, ToolRefusedError, AscError, AuthError) as exc:
             return error_result(str(exc))
-        except Exception as exc:  # last resort: report the type only, never raw details
+        except Exception as exc:  # last resort: the type only goes to the model, never raw details
+            # The full traceback goes to stderr (Python prints it when nothing else is set up), so
+            # the maintainer can debug it. The model and the user only see the short message.
             logger.exception("tool %s crashed", tool.name)
-            return error_result(f"Unexpected error in {tool.name} ({type(exc).__name__}).")
+            return error_result(
+                f"Unexpected error in {tool.name} ({type(exc).__name__}). This is a bug: the "
+                "details are in the server log (stderr). Please report it at "
+                f"{ISSUES_URL}."
+            )
 
     @asynccontextmanager
     async def lifespan(self, _server: Server[Any]) -> AsyncIterator[dict[str, Any]]:

@@ -19,6 +19,7 @@ from app_store_connect.tools.base import (
     optional_str,
     relationship,
     require_str,
+    resource_of,
     string_prop,
     summarize,
     to_text,
@@ -61,9 +62,9 @@ async def reply_to_customer_review(ctx: ToolContext, args: dict[str, Any]) -> st
     review_id, reply = require_str(args, "review_id"), require_str(args, "response_body")
     if len(reply) > MAX_REPLY_CHARS:
         raise ToolInputError(f"response_body is longer than {MAX_REPLY_CHARS} characters.")
-    review = (await ctx.client.request("GET", "/v1/customerReviews/{id}", item_id=review_id))[
-        "data"
-    ]
+    review = resource_of(
+        await ctx.client.request("GET", "/v1/customerReviews/{id}", item_id=review_id)
+    )
     attributes = review.get("attributes") or {}
     lines = [
         f"Review {review_id}: {attributes.get('rating')} stars "
@@ -81,7 +82,7 @@ async def reply_to_customer_review(ctx: ToolContext, args: dict[str, Any]) -> st
         }
     }
     data = await ctx.client.request("POST", "/v1/customerReviewResponses", body=body)
-    return f"Reply published (response {data['data'].get('id')})."
+    return f"Reply published (response {resource_of(data).get('id')})."
 
 
 READ_TOOLS: Final[list[ToolSpec]] = [

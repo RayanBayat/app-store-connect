@@ -19,6 +19,7 @@ from app_store_connect.tools.base import (
     ToolSpec,
     require_id,
     require_str,
+    resource_of,
     string_prop,
     to_text,
 )
@@ -119,11 +120,10 @@ async def get_age_rating(ctx: ToolContext, args: dict[str, Any]) -> str:
     result: list[dict[str, Any]] = []
     for info in infos:
         info_id = str(info["id"])
-        data = (
-            await ctx.client.request(
-                "GET", "/v1/appInfos/{id}/ageRatingDeclaration", item_id=info_id
-            )
-        )["data"]
+        response = await ctx.client.request(
+            "GET", "/v1/appInfos/{id}/ageRatingDeclaration", item_id=info_id
+        )
+        data = resource_of(response)
         attributes = data.get("attributes") or {}
         state = (info.get("attributes") or {}).get("state")
         questions = (*BOOLEAN_QUESTIONS, *FREQUENCY_QUESTIONS)
@@ -195,16 +195,17 @@ async def update_age_rating(ctx: ToolContext, args: dict[str, Any]) -> str:
     info_id = require_id(args, "app_info_id")
     explicit, fill_others = validate_answers(args.get("answers"))
     wanted = with_all_others(explicit) if fill_others else explicit
-    info = (await ctx.client.request("GET", "/v1/appInfos/{id}", item_id=info_id))["data"]
+    info = resource_of(await ctx.client.request("GET", "/v1/appInfos/{id}", item_id=info_id))
     state = (info.get("attributes") or {}).get("state")
     if not is_editable(state):
         raise ToolRefusedError(
             f"This app info is in state {state}; answers can only change in: "
             f"{', '.join(sorted(EDITABLE_STATES))}. Nothing was changed."
         )
-    declaration = (
-        await ctx.client.request("GET", "/v1/appInfos/{id}/ageRatingDeclaration", item_id=info_id)
-    )["data"]
+    declaration_response = await ctx.client.request(
+        "GET", "/v1/appInfos/{id}/ageRatingDeclaration", item_id=info_id
+    )
+    declaration = resource_of(declaration_response)
     old = declaration.get("attributes") or {}
     changed = {n: v for n, v in wanted.items() if old.get(n) != v}
     if not changed:

@@ -172,3 +172,18 @@ def test_degraded_mode_error_shows_the_home_folder_as_tilde(
     assert app.startup_error is not None
     assert str(home) not in app.startup_error
     assert "~/secret-project" in app.startup_error
+
+
+async def test_unexpected_error_is_a_clear_bug_message_and_the_traceback_is_logged(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    fake = FakeApple()
+    fake.on("GET", "/v1/apps", {"data": ["this is not an object"]})  # makes the tool crash
+    async with connected(tmp_path, fake) as client:
+        result = await client.call_tool("list_apps", {})
+    assert result.is_error
+    message = text_of(result)
+    assert "Unexpected error in list_apps (AttributeError)" in message
+    assert "This is a bug" in message
+    assert "https://github.com/RayanBayat/app-store-connect/issues" in message
+    assert "Traceback" in caplog.text  # the details are in the log, not in the message

@@ -34,14 +34,14 @@ UPLOAD_TIMEOUT: Final = httpx.Timeout(120.0, connect=10.0)
 RETRY_STATUSES: Final = frozenset({429, 500, 502, 503, 504})
 # A POST may have been processed before a 5xx came back, so we never repeat it after one.
 SAFE_TO_REPEAT: Final = frozenset({"GET", "PATCH", "DELETE", "PUT"})
-# Apple IDs are numbers or UUIDs. No dots (so ".." cannot climb a path), no underscores, and
-# the first character is never a dash.
 # Apple's presigned screenshot uploads go to hosts under apple.com (they look like
 # store-NNN.blobstore.apple.com). This is Apple's upload host pattern as we understand it and
 # MUST BE VERIFIED ON THE FIRST REAL UPLOAD; if Apple uses another domain, change it here, in
 # this one place. Anything else (other domains, IP addresses) is refused, so a bad answer
 # cannot make the server call an internal address.
 UPLOAD_HOST_SUFFIX: Final = ".apple.com"
+# Apple IDs are numbers or UUIDs. No dots (so ".." cannot climb a path), no underscores, and
+# the first character is never a dash.
 ID_PATTERN: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,127}")
 
 Sleep = Callable[[float], Awaitable[None]]
@@ -112,7 +112,14 @@ def is_api_url(url: str) -> bool:
     return parts.scheme == "https" and parts.hostname == API_HOST and parts.port in (None, 443)
 
 
-MAX_REASONS = 20
+MAX_REASONS: Final = 20
+
+
+def error_text(error: object) -> str:
+    """One Apple error object as 'title: detail' (empty text when it is not an error object)."""
+    if not isinstance(error, dict):
+        return ""
+    return f"{error.get('title', '')}: {error.get('detail', '')}".strip(": ")
 
 
 def associated_reasons(item: dict[str, Any]) -> list[str]:
@@ -126,11 +133,9 @@ def associated_reasons(item: dict[str, Any]) -> list[str]:
         return []
     reasons: list[str] = []
     for errors in associated.values():
-        for error in errors if isinstance(errors, list) else []:
-            if isinstance(error, dict):
-                text = f"{error.get('title', '')}: {error.get('detail', '')}".strip(": ")
-                if text:
-                    reasons.append(text)
+        if not isinstance(errors, list):
+            continue
+        reasons += [text for error in errors if (text := error_text(error))]
     return reasons
 
 
@@ -186,6 +191,35 @@ def check_upload_target(method: str, url: str) -> None:
         raise AscError("Apple gave an upload address that is an IP address; refusing to use it.")
     if not host.endswith(UPLOAD_HOST_SUFFIX):
         raise AscError("Apple gave an upload address outside apple.com; refusing to use it.")
+
+
+def parse_error_body(raw: bytes) -> dict[str, Any] | None:
+    """Read an error answer as JSON, or None when it is not JSON (the status is still reported)."""
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def parse_success_body(raw: bytes, method: str, url: str) -> dict[str, Any]:
+    """Read a successful (2xx) answer. An empty body (for example 204) means no data: {}.
+
+    Anything else must be a JSON object. If it is not, we stop with a clear message instead of
+    pretending Apple sent nothing: the caller would otherwise fail later with a confusing error.
+    """
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        data = None
+    if not isinstance(data, dict):
+        raise AscError(
+            f"Apple's answer to {method} {urlsplit(url).path} was not a JSON object, so it "
+            "cannot be used. This can happen when Apple's service has a problem; try again later."
+        )
+    return data
 
 
 class AscClient:
@@ -278,27 +312,28 @@ class AscClient:
         if not is_api_url(url):
             raise AscError("internal error: refusing to send credentials to a non-Apple host.")
         for attempt in range(MAX_RETRIES + 1):
-            status, headers, data = await self._once(method, url, params, body)
+            status, headers, raw = await self._once(method, url, params, body)
             can_retry = status == 429 or (status in RETRY_STATUSES and method in SAFE_TO_REPEAT)
             if can_retry and attempt < MAX_RETRIES:
                 await self._sleep(retry_delay(attempt, headers.get("retry-after")))
                 continue
             if status >= 300:  # redirects are errors too: we never follow them
-                raise AscApiError(status, format_api_error(status, method, url, data))
-            return data or {}
+                error_body = parse_error_body(raw)
+                raise AscApiError(status, format_api_error(status, method, url, error_body))
+            return parse_success_body(raw, method, url)
         raise AscError("internal error: retry loop ended without a result.")
 
     async def _once(
         self, method: str, url: str, params: dict[str, str] | None, body: dict[str, Any] | None
-    ) -> tuple[int, httpx.Headers, dict[str, Any] | None]:
-        """One HTTP exchange: returns (status, headers, parsed JSON or None)."""
+    ) -> tuple[int, httpx.Headers, bytes]:
+        """One HTTP exchange: returns (status, headers, the raw body bytes)."""
         headers = {"Authorization": f"Bearer {self._tokens.token()}", "Accept": "application/json"}
         try:
             async with self._api.stream(
                 method, url, params=params, json=body, headers=headers
             ) as response:
                 raw = await self._read_limited(response)
-                return response.status_code, response.headers, self._parse(raw)
+                return response.status_code, response.headers, raw
         except httpx.HTTPError as exc:
             raise AscError(f"Could not reach Apple ({type(exc).__name__}).") from exc
 
@@ -313,13 +348,3 @@ class AscClient:
                 raise AscError("Apple's response is larger than the 10 MB limit; refusing it.")
             chunks.append(chunk)
         return b"".join(chunks)
-
-    @staticmethod
-    def _parse(raw: bytes) -> dict[str, Any] | None:
-        if not raw:
-            return None
-        try:
-            data = json.loads(raw)
-        except ValueError:
-            return None
-        return data if isinstance(data, dict) else None

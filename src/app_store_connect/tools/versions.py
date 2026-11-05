@@ -9,10 +9,12 @@ from app_store_connect.tools.base import (
     ToolContext,
     ToolInputError,
     ToolSpec,
+    attributes_of,
     limit_arg,
     optional_str,
     relationship,
     require_str,
+    resource_of,
     string_prop,
     summarize,
     to_text,
@@ -46,7 +48,7 @@ async def get_version_status(ctx: ToolContext, args: dict[str, Any]) -> str:
     data = await ctx.client.request(
         "GET", "/v1/appStoreVersions/{id}", item_id=require_str(args, "version_id")
     )
-    return to_text(summarize(data["data"], VERSION_FIELDS))
+    return to_text(summarize(resource_of(data), VERSION_FIELDS))
 
 
 def choice(
@@ -69,7 +71,7 @@ async def create_app_store_version(ctx: ToolContext, args: dict[str, Any]) -> st
     release_type = choice(args, "release_type", RELEASE_TYPES, None)
     app = await ctx.client.request("GET", "/v1/apps/{id}", item_id=app_id)
     lines = [
-        f"App: {app['data']['attributes'].get('name')} ({app_id})",
+        f"App: {attributes_of(resource_of(app)).get('name')} ({app_id})",
         change_line("Version", None, version_string),
         f"Platform: {platform}",
         f"Release type: {release_type or '(Apple default)'}",
@@ -86,7 +88,7 @@ async def create_app_store_version(ctx: ToolContext, args: dict[str, Any]) -> st
         }
     }
     data = await ctx.client.request("POST", "/v1/appStoreVersions", body=body)
-    return to_text(summarize(data["data"], VERSION_FIELDS))
+    return to_text(summarize(resource_of(data), VERSION_FIELDS))
 
 
 async def select_build_for_version(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -97,7 +99,7 @@ async def select_build_for_version(ctx: ToolContext, args: dict[str, Any]) -> st
     )
     build = await ctx.client.request("GET", "/v1/builds/{id}", item_id=build_id)
     old_id = (current.get("data") or {}).get("id")
-    number = build["data"]["attributes"].get("version")
+    number = attributes_of(resource_of(build)).get("version")
     lines = [
         f"Version ID: {version_id}",
         change_line("Build", old_id, f"{build_id} (build number {number})"),

@@ -15,6 +15,7 @@ from app_store_connect.tools.base import (
     ToolSpec,
     relationship,
     require_str,
+    resource_of,
     string_prop,
     summarize,
     to_text,
@@ -190,7 +191,7 @@ async def upload_screenshot(ctx: ToolContext, args: dict[str, Any]) -> str:
             "relationships": {"appScreenshotSet": relationship("appScreenshotSets", set_id)},
         }
     }
-    created = (await ctx.client.request("POST", "/v1/appScreenshots", body=reserve))["data"]
+    created = resource_of(await ctx.client.request("POST", "/v1/appScreenshots", body=reserve))
     operations = check_operations((created.get("attributes") or {}).get("uploadOperations"), size)
     await send_parts(ctx, data, operations)
     commit = {
@@ -204,7 +205,7 @@ async def upload_screenshot(ctx: ToolContext, args: dict[str, Any]) -> str:
         "PATCH", "/v1/appScreenshots/{id}", item_id=str(created["id"]), body=commit
     )
     return "Uploaded: " + to_text(
-        summarize(done["data"], ("fileName", "assetDeliveryState"), wrap=("fileName",))
+        summarize(resource_of(done), ("fileName", "assetDeliveryState"), wrap=("fileName",))
     )
 
 

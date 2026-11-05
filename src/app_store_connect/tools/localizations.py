@@ -12,6 +12,7 @@ from app_store_connect.tools.base import (
     relationship,
     require_id,
     require_str,
+    resource_of,
     string_prop,
     summarize,
     to_text,
@@ -176,7 +177,7 @@ async def update_localization(
     """Show old -> new for each changed field, ask the human, then PATCH only those fields."""
     localization_id = require_id(args, "localization_id")
     changes = requested_changes(args, argument_names)
-    current = (await ctx.client.request("GET", template, item_id=localization_id))["data"]
+    current = resource_of(await ctx.client.request("GET", template, item_id=localization_id))
     old = current.get("attributes") or {}
     changed = {
         argument: value
@@ -192,7 +193,9 @@ async def update_localization(
     attributes = to_apple_attributes(changed)
     body = {"data": {"type": kind, "id": localization_id, "attributes": attributes}}
     data = await ctx.client.request("PATCH", template, item_id=localization_id, body=body)
-    return "Updated: " + to_text(summarize(data["data"], tuple(attributes), wrap=tuple(attributes)))
+    return "Updated: " + to_text(
+        summarize(resource_of(data), tuple(attributes), wrap=tuple(attributes))
+    )
 
 
 async def update_version_localization(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -244,7 +247,9 @@ def creation_body(
 
 def created_text(data: dict[str, Any], attributes: dict[str, str]) -> str:
     """The result shown to the model: what Apple created (text fields marked untrusted)."""
-    return "Created: " + to_text(summarize(data["data"], tuple(attributes), wrap=tuple(attributes)))
+    return "Created: " + to_text(
+        summarize(resource_of(data), tuple(attributes), wrap=tuple(attributes))
+    )
 
 
 async def create_version_localization(ctx: ToolContext, args: dict[str, Any]) -> str:

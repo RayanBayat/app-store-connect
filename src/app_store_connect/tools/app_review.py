@@ -14,9 +14,11 @@ from app_store_connect.tools.base import (
     ToolContext,
     ToolRefusedError,
     ToolSpec,
+    attributes_of,
     optional_str,
     relationship,
     require_str,
+    resource_of,
     string_prop,
     summarize,
     to_text,
@@ -40,14 +42,14 @@ async def submit_for_app_review(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Submit an App Store version to Apple App Review (three API steps, one confirmation)."""
     app_id, version_id = require_str(args, "app_id"), require_str(args, "version_id")
     platform = choice(args, "platform", PLATFORMS, "IOS") or "IOS"
-    app = (await ctx.client.request("GET", "/v1/apps/{id}", item_id=app_id))["data"]
+    app = resource_of(await ctx.client.request("GET", "/v1/apps/{id}", item_id=app_id))
     await require_version_of_app(ctx, app_id, version_id)
     version = (await ctx.client.request("GET", "/v1/appStoreVersions/{id}", item_id=version_id))[
         "data"
     ]
     attributes = version.get("attributes") or {}
     lines = [
-        f"App: {app['attributes'].get('name')} ({app_id})",
+        f"App: {attributes_of(app).get('name')} ({app_id})",
         f"Version: {attributes.get('versionString')} ({version_id}), "
         f"now {attributes.get('appVersionState')}",
         f"Platform: {platform}",
@@ -96,7 +98,7 @@ async def run_submission(ctx: ToolContext, app_id: str, version_id: str, platfor
             "relationships": {"app": relationship("apps", app_id)},
         }
     }
-    submission = (await ctx.client.request("POST", "/v1/reviewSubmissions", body=create))["data"]
+    submission = resource_of(await ctx.client.request("POST", "/v1/reviewSubmissions", body=create))
     return await add_and_submit(ctx, str(submission["id"]), version_id)
 
 

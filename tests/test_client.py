@@ -317,3 +317,15 @@ def test_error_message_includes_apples_associated_reasons() -> None:
     )
     assert "Apple lists these problems" in message
     assert "You must provide a value for 'copyright'." in message
+
+
+async def test_a_successful_answer_that_is_not_json_is_a_clear_error(tmp_path: Path) -> None:
+    client = make_client(tmp_path, lambda _r: httpx.Response(200, content=b"<html>oops</html>"))
+    with pytest.raises(AscError, match="was not a JSON object"):
+        await client.request("GET", "/v1/apps")
+
+
+async def test_an_error_answer_that_is_not_json_still_reports_the_status(tmp_path: Path) -> None:
+    client = make_client(tmp_path, lambda _r: httpx.Response(502, content=b"<html>bad</html>"))
+    with pytest.raises(AscApiError, match="502"):
+        await client.request("PATCH", "/v1/apps/{id}", item_id="1", body={"data": {}})

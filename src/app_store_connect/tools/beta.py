@@ -11,9 +11,11 @@ from app_store_connect.tools.base import (
     ToolContext,
     ToolInputError,
     ToolSpec,
+    attributes_of,
     limit_arg,
     optional_str,
     require_str,
+    resource_of,
     string_prop,
     summarize,
     to_text,
@@ -53,7 +55,7 @@ async def list_beta_testers(ctx: ToolContext, args: dict[str, Any]) -> str:
 async def group_name(ctx: ToolContext, group_id: str) -> str:
     """Look up a beta group's name (shown in confirmation forms)."""
     data = await ctx.client.request("GET", "/v1/betaGroups/{id}", item_id=group_id)
-    return str(data["data"]["attributes"].get("name"))
+    return str(attributes_of(resource_of(data)).get("name"))
 
 
 async def add_beta_tester(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -79,7 +81,7 @@ async def add_beta_tester(ctx: ToolContext, args: dict[str, Any]) -> str:
         }
     }
     data = await ctx.client.request("POST", "/v1/betaTesters", body=body)
-    return to_text(summarize(data["data"], TESTER_FIELDS, wrap=TESTER_WRAPPED))
+    return to_text(summarize(resource_of(data), TESTER_FIELDS, wrap=TESTER_WRAPPED))
 
 
 async def remove_beta_tester(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -87,7 +89,7 @@ async def remove_beta_tester(ctx: ToolContext, args: dict[str, Any]) -> str:
     group_id, tester_id = require_str(args, "beta_group_id"), require_str(args, "beta_tester_id")
     name = await group_name(ctx, group_id)
     tester = await ctx.client.request("GET", "/v1/betaTesters/{id}", item_id=tester_id)
-    email = tester["data"]["attributes"].get("email")
+    email = attributes_of(resource_of(tester)).get("email")
     lines = [f"Tester: {email} ({tester_id})", f"Removed from beta group: {name} ({group_id})"]
     await confirm_change(ctx, "Remove a tester from a TestFlight beta group", lines)
     body = {"data": [{"type": "betaTesters", "id": tester_id}]}

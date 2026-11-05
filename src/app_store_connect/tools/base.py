@@ -17,7 +17,7 @@ from typing import Any, Final
 import mcp_types as types
 from mcp.server.session import ServerSession
 
-from app_store_connect.client import AscClient, valid_id
+from app_store_connect.client import AscClient, AscError, valid_id
 from app_store_connect.config import Config
 from app_store_connect.confirmflow import ConfirmationBook
 from app_store_connect.textsafe import wrap_strings
@@ -144,6 +144,37 @@ def summarize(
         if chosen.get(name) is not None:
             chosen[name] = wrap_strings(chosen[name])
     return {"id": item.get("id"), "type": item.get("type"), **chosen}
+
+
+ISSUES_URL: Final = "https://github.com/RayanBayat/app-store-connect/issues"
+
+
+def resource_of(response: dict[str, Any]) -> dict[str, Any]:
+    """Return the one resource inside Apple's answer (`response["data"]`).
+
+    Apple's answers are JSON:API documents. If `data` is missing we stop with a clear message
+    instead of a bare KeyError that tells the user nothing.
+    """
+    data = response.get("data")
+    if not isinstance(data, dict):
+        raise AscError(
+            "Apple's answer had no 'data' object, so there is nothing to read. Apple may have "
+            "changed this endpoint or had a problem. Try again later; if it keeps happening, "
+            f"please report it at {ISSUES_URL}."
+        )
+    return data
+
+
+def attributes_of(item: dict[str, Any]) -> dict[str, Any]:
+    """Return the `attributes` of one Apple resource, or raise a clear error when absent."""
+    attributes = item.get("attributes")
+    if not isinstance(attributes, dict):
+        raise AscError(
+            f"Apple's answer had no 'attributes' for {item.get('type')} {item.get('id')}, so "
+            "its values cannot be read. Apple may have changed this endpoint or had a problem. "
+            f"Try again later; if it keeps happening, please report it at {ISSUES_URL}."
+        )
+    return attributes
 
 
 def to_text(value: Any) -> str:

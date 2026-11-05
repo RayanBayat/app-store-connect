@@ -226,3 +226,24 @@ def test_tool_context_repr_does_not_leak_ids(tmp_path: Path) -> None:
     ctx = ToolContext(client=None, config=make_config(tmp_path / "k"))  # type: ignore[arg-type]
     assert KEY_ID not in repr(ctx)
     assert ISSUER_ID not in repr(ctx)
+
+
+async def test_an_answer_without_data_is_a_clear_error_not_a_key_error(tmp_path: Path) -> None:
+    fake = FakeApple()
+    fake.on("GET", "/v1/apps/42", {"links": {}})
+    async with connected(tmp_path, fake) as client:
+        result = await client.call_tool("get_app", {"app_id": "42"})
+    assert result.is_error
+    assert "Apple's answer had no 'data'" in text_of(result)
+    assert "Unexpected error" not in text_of(result)
+
+
+async def test_an_answer_without_attributes_is_a_clear_error(tmp_path: Path) -> None:
+    fake = FakeApple()
+    fake.on("GET", "/v1/betaGroups/g1", {"data": {"type": "betaGroups", "id": "g1"}})
+    async with connected(tmp_path, fake, allow_writes=True) as client:
+        result = await client.call_tool(
+            "add_build_to_beta_group", {"beta_group_id": "g1", "build_id": "b1"}
+        )
+    assert result.is_error
+    assert "no 'attributes' for betaGroups g1" in text_of(result)

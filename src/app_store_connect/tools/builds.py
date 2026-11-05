@@ -9,10 +9,12 @@ from app_store_connect.tools.base import (
     LIMIT_PROP,
     ToolContext,
     ToolSpec,
+    attributes_of,
     limit_arg,
     optional_str,
     relationship,
     require_str,
+    resource_of,
     string_prop,
     summarize,
     to_text,
@@ -48,13 +50,13 @@ async def list_builds(ctx: ToolContext, args: dict[str, Any]) -> str:
 async def get_build(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Return one build's details."""
     data = await ctx.client.request("GET", "/v1/builds/{id}", item_id=require_str(args, "build_id"))
-    return to_text(summarize(data["data"], BUILD_FIELDS))
+    return to_text(summarize(resource_of(data), BUILD_FIELDS))
 
 
 async def build_label(ctx: ToolContext, build_id: str) -> str:
     """Describe a build for confirmation forms, e.g. 'build number 42 (ID 123)'."""
     data = await ctx.client.request("GET", "/v1/builds/{id}", item_id=build_id)
-    return f"build number {data['data']['attributes'].get('version')} (ID {build_id})"
+    return f"build number {attributes_of(resource_of(data)).get('version')} (ID {build_id})"
 
 
 async def add_build_to_beta_group(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -83,7 +85,7 @@ async def submit_build_for_beta_review(ctx: ToolContext, args: dict[str, Any]) -
         }
     }
     data = await ctx.client.request("POST", "/v1/betaAppReviewSubmissions", body=body)
-    return f"Submitted {label} for beta review (submission {data['data'].get('id')})."
+    return f"Submitted {label} for beta review (submission {resource_of(data).get('id')})."
 
 
 READ_TOOLS: Final[list[ToolSpec]] = [

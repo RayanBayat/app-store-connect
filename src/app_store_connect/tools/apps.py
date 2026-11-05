@@ -13,6 +13,7 @@ from app_store_connect.tools.base import (
     optional_str,
     require_id,
     require_str,
+    resource_of,
     string_prop,
     summarize,
     to_text,
@@ -38,7 +39,7 @@ async def list_apps(ctx: ToolContext, args: dict[str, Any]) -> str:
 async def get_app(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Return one app's details."""
     data = await ctx.client.request("GET", "/v1/apps/{id}", item_id=require_str(args, "app_id"))
-    return to_text(summarize(data["data"], APP_FIELDS, wrap=WRAPPED))
+    return to_text(summarize(resource_of(data), APP_FIELDS, wrap=WRAPPED))
 
 
 async def has_info_localization(ctx: ToolContext, app_id: str, locale: str) -> bool:
@@ -57,7 +58,7 @@ async def update_app_primary_locale(ctx: ToolContext, args: dict[str, Any]) -> s
     """Change the app's primary language (PATCH /v1/apps/{id}, only `primaryLocale`)."""
     app_id = require_id(args, "app_id")
     locale = valid_locale(require_str(args, "locale"))
-    app = (await ctx.client.request("GET", "/v1/apps/{id}", item_id=app_id))["data"]
+    app = resource_of(await ctx.client.request("GET", "/v1/apps/{id}", item_id=app_id))
     attributes = app.get("attributes") or {}
     old = attributes.get("primaryLocale")
     if old == locale:

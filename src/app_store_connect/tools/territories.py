@@ -12,7 +12,7 @@ from collections.abc import Awaitable
 from typing import Any, Final
 
 from app_store_connect.client import AscApiError
-from app_store_connect.tools.base import ToolContext, ToolInputError
+from app_store_connect.tools.base import ToolContext, ToolInputError, resource_of
 
 CODE_PATTERN: Final = re.compile(r"[A-Z]{3}")
 # Only for readability. Not a list of valid territories: Apple's own answer decides that.
@@ -65,6 +65,6 @@ async def data_or_none(request: Awaitable[dict[str, Any]]) -> dict[str, Any] | N
 
 async def app_label(ctx: ToolContext, app_id: str) -> tuple[str, str]:
     """(name, 'Name (ID)') of an app, for forms. The name is escaped when the form is built."""
-    app = (await ctx.client.request("GET", "/v1/apps/{id}", item_id=app_id))["data"]
+    app = resource_of(await ctx.client.request("GET", "/v1/apps/{id}", item_id=app_id))
     name = str((app.get("attributes") or {}).get("name") or app_id)
     return name, f"{name} ({app_id})"
