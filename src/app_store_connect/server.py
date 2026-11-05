@@ -31,8 +31,8 @@ from app_store_connect.client import AscClient, AscError
 from app_store_connect.config import Config, ConfigError, load_config
 from app_store_connect.confirmflow import STATE_TTL_SECONDS, ConfirmationBook, InputRequiredSignal
 from app_store_connect.maintenance import NAMES, TOOLS, Maintenance, text_result
+from app_store_connect.maintenance_record import check_record, load_record, now_local
 from app_store_connect.paths import tildify
-from app_store_connect.review import check_review, load_review, now_local
 from app_store_connect.tools import all_tools, write_tools
 from app_store_connect.tools.base import ToolContext, ToolInputError, ToolRefusedError, ToolSpec
 
@@ -112,7 +112,7 @@ class AppServer:
         """Return the reason to refuse (review overdue), or None to allow."""
         if self.config is None:
             return "The server is not configured."
-        check = check_review(load_review(), self._clock(), self.config.review_max_days)
+        check = check_record(load_record(), self._clock(), self.config.review_max_days)
         return check.message if check.overdue else None
 
     async def _maintenance_call(

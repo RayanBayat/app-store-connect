@@ -24,7 +24,7 @@ import httpx
 from app_store_connect import osv
 from app_store_connect.httpio import DownloadError, fetch_limited
 from app_store_connect.identity import CodeIdentity, compare_with_review, current_identity
-from app_store_connect.review import Review
+from app_store_connect.maintenance_record import MaintenanceRecord
 from app_store_connect.spec import (
     APPLE_API_SPEC_VERSION,
     ENDPOINTS_USED,
@@ -37,8 +37,8 @@ from app_store_connect.tools import (
     apps,
     beta,
     builds,
+    customer_reviews,
     localizations,
-    reviews,
     versions,
 )
 
@@ -62,7 +62,7 @@ USED_ATTRIBUTES: Final[dict[str, tuple[str, ...]]] = {
     "BetaTester": beta.TESTER_FIELDS,
     "AppStoreVersionLocalization": localizations.VERSION_FIELDS,
     "AppInfoLocalization": localizations.INFO_FIELDS,
-    "CustomerReview": (*reviews.REVIEW_FIELDS, "title", "body"),
+    "CustomerReview": (*customer_reviews.REVIEW_FIELDS, "title", "body"),
     "ReviewSubmission": ("platform", "state", "submittedDate"),
     "AppAvailabilityV2": ("availableInNewTerritories",),
     "TerritoryAvailability": ("available", "releaseDate", "contentStatuses"),
@@ -118,7 +118,7 @@ class ReportInputs:
 
     client: httpx.Client
     now: datetime
-    review: Review | None
+    review: MaintenanceRecord | None
     current_tools: list[str]
     packages: list[osv.Query]  # every installed runtime package (for the vulnerability scan)
     direct_packages: list[osv.Query] = field(default_factory=list)  # our own == pins

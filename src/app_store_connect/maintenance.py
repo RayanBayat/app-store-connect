@@ -30,6 +30,13 @@ from app_store_connect.confirmflow import (
     ask_human,
 )
 from app_store_connect.identity import compare_with_review, current_identity
+from app_store_connect.maintenance_record import (
+    MaintenanceRecord,
+    check_record,
+    load_record,
+    now_local,
+    stamp_record,
+)
 from app_store_connect.report import (
     ReportFacts,
     ReportInputs,
@@ -37,13 +44,6 @@ from app_store_connect.report import (
     build_report_with_facts,
     direct_packages,
     installed_packages,
-)
-from app_store_connect.review import (
-    Review,
-    check_review,
-    load_review,
-    now_local,
-    stamp_review,
 )
 from app_store_connect.spec import APPLE_API_SPEC_VERSION
 from app_store_connect.textsafe import escape_display
@@ -132,7 +132,7 @@ def make_report_result(current_tools: list[str]) -> ReportResult:
         inputs = ReportInputs(
             client=client,
             now=now_local(),
-            review=load_review(),
+            review=load_record(),
             current_tools=current_tools,
             packages=installed_packages(),
             direct_packages=direct_packages(),
@@ -145,9 +145,9 @@ def make_report(current_tools: list[str]) -> str:
     return make_report_result(current_tools).text
 
 
-def describe_review(review: Review | None, now: datetime, max_days: int) -> list[str]:
+def describe_review(review: MaintenanceRecord | None, now: datetime, max_days: int) -> list[str]:
     """Return status lines about the last review."""
-    check = check_review(review, now, max_days)
+    check = check_record(review, now, max_days)
     if review is None:
         return [f"Last review: never. {check.message}"]
     lines = [
@@ -162,7 +162,9 @@ def describe_review(review: Review | None, now: datetime, max_days: int) -> list
     return lines
 
 
-def status_text(*, max_days: int, now: datetime, review: Review | None, writes: bool | None) -> str:
+def status_text(
+    *, max_days: int, now: datetime, review: MaintenanceRecord | None, writes: bool | None
+) -> str:
     """Build the text of maintenance_status (shared with the `status` command)."""
     lines = describe_review(review, now, max_days)
     lines += compare_with_review(
@@ -219,7 +221,7 @@ class Maintenance:
         return status_text(
             max_days=self.config.review_max_days,
             now=self.clock(),
-            review=load_review(),
+            review=load_record(),
             writes=self.config.allow_writes,
         )
 
@@ -262,7 +264,7 @@ class Maintenance:
                 f"instead: {TERMINAL_COMMAND}",
                 is_error=True,
             )
-        stamp_review(self.clock(), APPLE_API_SPEC_VERSION, summary, tool_names)
+        stamp_record(self.clock(), APPLE_API_SPEC_VERSION, summary, tool_names)
         return text_result("Review recorded. App Store Connect tools are available again.")
 
     def _recent_report(self) -> tuple[datetime, ReportFacts] | None:
@@ -290,7 +292,7 @@ class Maintenance:
             self._book,
             tool_name=CONFIRM,
             arguments=arguments,
-            message=review_form(summary, built_at, facts, load_review()),
+            message=review_form(summary, built_at, facts, load_record()),
             schema=CONFIRM_SCHEMA,
             approve_field="read",
             input_responses=input_responses,
@@ -302,7 +304,9 @@ def _count(value: int | None) -> str:
     return "NOT CHECKED" if value is None else str(value)
 
 
-def review_form(summary: str, built_at: datetime, facts: ReportFacts, review: Review | None) -> str:
+def review_form(
+    summary: str, built_at: datetime, facts: ReportFacts, review: MaintenanceRecord | None
+) -> str:
     """The text of the review form: the server's own figures first, Claude's summary last.
 
     The figures come from the report this server built, never from the model, so a rosy

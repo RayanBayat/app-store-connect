@@ -1,4 +1,4 @@
-"""The monthly review record: has a human looked at what changed recently?
+"""The maintenance record: proof that a human did the monthly review recently.
 
 Why: Apple's API and our dependencies change, and this server holds a key that can
 edit a live App Store listing. Tools stop working when the last review is too old, so
@@ -42,7 +42,7 @@ class HistoryEntry:
 
 
 @dataclass(frozen=True, slots=True)
-class Review:
+class MaintenanceRecord:
     """The latest review plus a short history of earlier ones."""
 
     reviewed_at: datetime
@@ -60,7 +60,7 @@ class Review:
 
 
 @dataclass(frozen=True, slots=True)
-class ReviewCheck:
+class RecordCheck:
     """Whether a review is fresh enough, and a sentence to show the user either way."""
 
     overdue: bool
@@ -74,7 +74,7 @@ def now_local() -> datetime:
     return datetime.now(UTC).astimezone()
 
 
-def review_path() -> Path:
+def record_path() -> Path:
     """Return the full path of the review file."""
     return state_dir() / FILE_NAME
 
@@ -104,14 +104,14 @@ def _history_from_json(raw: object) -> tuple[HistoryEntry, ...]:
     return tuple(entries[:HISTORY_LIMIT])
 
 
-def _review_from_json(data: Any) -> Review:
-    """Build a `Review` from parsed JSON; raises ValueError/KeyError/TypeError if unusable."""
+def _record_from_json(data: Any) -> MaintenanceRecord:
+    """Build a `MaintenanceRecord` from parsed JSON; raises if the data is unusable."""
     if not isinstance(data, dict):
         raise TypeError("review file is not a JSON object")
     tools = data.get("tools", [])
     if not isinstance(tools, list):
         raise TypeError("tools must be a list")
-    return Review(
+    return MaintenanceRecord(
         reviewed_at=parse_time(data["reviewed_at"]),
         spec_version=str(data.get("spec_version", "")),
         outcome=str(data.get("outcome", "")),
@@ -122,15 +122,15 @@ def _review_from_json(data: Any) -> Review:
     )
 
 
-def load_review(path: Path | None = None) -> Review | None:
+def load_record(path: Path | None = None) -> MaintenanceRecord | None:
     """Read the review file; return None when it is missing or unusable.
 
     A corrupt file is treated like "no review happened" so the gate stays closed.
     """
-    target = path or review_path()
+    target = path or record_path()
     try:
         data = json.loads(target.read_text(encoding="utf-8"))
-        return _review_from_json(data)
+        return _record_from_json(data)
     except FileNotFoundError:
         return None
     except (OSError, ValueError, KeyError, TypeError):
@@ -138,15 +138,15 @@ def load_review(path: Path | None = None) -> Review | None:
         return None
 
 
-def check_review(review: Review | None, now: datetime, max_days: int) -> ReviewCheck:
+def check_record(review: MaintenanceRecord | None, now: datetime, max_days: int) -> RecordCheck:
     """Decide whether `review` is still fresh enough at `now`."""
     todo = "Run the maintenance_report tool, read it, then confirm with maintenance_confirm_review."
     if review is None:
-        return ReviewCheck(True, f"The maintenance review has never been done. {todo}")
+        return RecordCheck(True, f"The maintenance review has never been done. {todo}")
     if review.reviewed_at > now + FUTURE_TOLERANCE:
         # A future date (wrong clock, hand-edited file) would otherwise keep tools open forever.
         when = review.reviewed_at.isoformat()
-        return ReviewCheck(
+        return RecordCheck(
             True, f"The review date {when} is in the future, so it cannot be trusted. {todo}"
         )
     days = (now - review.reviewed_at).days
@@ -156,20 +156,20 @@ def check_review(review: Review | None, now: datetime, max_days: int) -> ReviewC
             f"The maintenance review is overdue (last review {date}, {days} days ago; "
             f"limit {max_days} days). {todo}"
         )
-        return ReviewCheck(True, message, days_ago=days, days_left=max_days - days)
-    return ReviewCheck(
+        return RecordCheck(True, message, days_ago=days, days_left=max_days - days)
+    return RecordCheck(
         False, f"Last review {days} days ago.", days_ago=days, days_left=max_days - days
     )
 
 
-def build_review(
-    previous: Review | None,
+def build_record(
+    previous: MaintenanceRecord | None,
     now: datetime,
     spec_version: str,
     outcome: str,
     tools: list[str] | None,
     code: CodeIdentity | None = None,
-) -> Review:
+) -> MaintenanceRecord:
     """Assemble the new review, pushing the previous one into the history (newest first)."""
     history: list[HistoryEntry] = []
     old_tools: tuple[str, ...] = ()
@@ -181,7 +181,7 @@ def build_review(
             previous.outcome,
         )
         history = [entry, *previous.history]
-    return Review(
+    return MaintenanceRecord(
         reviewed_at=now,
         spec_version=spec_version,
         outcome=outcome,
@@ -192,8 +192,8 @@ def build_review(
     )
 
 
-def _to_json(review: Review) -> dict[str, Any]:
-    """Convert a `Review` to the on-disk JSON shape."""
+def _to_json(review: MaintenanceRecord) -> dict[str, Any]:
+    """Convert a `MaintenanceRecord` to the on-disk JSON shape."""
     return {
         "schema": SCHEMA,
         "reviewed_at": review.reviewed_at.isoformat(timespec="seconds"),
@@ -213,9 +213,9 @@ def _to_json(review: Review) -> dict[str, Any]:
     }
 
 
-def write_review(review: Review, path: Path | None = None) -> None:
+def write_record(review: MaintenanceRecord, path: Path | None = None) -> None:
     """Write the review atomically (temp file + rename) with mode 0600."""
-    target = path or review_path()
+    target = path or record_path()
     directory = ensure_private_dir(target.parent)
     fd, tmp_name = tempfile.mkstemp(dir=directory, prefix="review-", suffix=".tmp")
     try:
@@ -229,16 +229,16 @@ def write_review(review: Review, path: Path | None = None) -> None:
         raise
 
 
-def stamp_review(
+def stamp_record(
     now: datetime,
     spec_version: str,
     outcome: str,
     tools: list[str] | None,
     code: CodeIdentity | None = None,
-) -> Review:
+) -> MaintenanceRecord:
     """Record a completed review (of the running code, unless `code` is given) and return it."""
-    review = build_review(
-        load_review(), now, spec_version, outcome, tools, code or current_identity()
+    review = build_record(
+        load_record(), now, spec_version, outcome, tools, code or current_identity()
     )
-    write_review(review)
+    write_record(review)
     return review

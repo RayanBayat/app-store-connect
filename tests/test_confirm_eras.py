@@ -16,7 +16,7 @@ from mcp.shared.exceptions import MCPError, NoBackChannelError
 
 from app_store_connect import confirmflow
 from app_store_connect.confirmflow import ConfirmationBook, form_support_problem
-from app_store_connect.review import load_review
+from app_store_connect.maintenance_record import load_record
 
 from .apple_fake import FakeApple, connected, one, resource, text_of
 
@@ -336,7 +336,7 @@ async def test_review_confirmation_stamps_only_on_accept(tmp_path: Path, mode: s
         result = await c.call_tool("maintenance_confirm_review", {"summary": "fine"})
     assert not result.is_error, text_of(result)
     assert "Claude's summary" in answers.forms[0]
-    review = load_review()
+    review = load_record()
     assert review is not None and review.outcome == "fine"
 
 
@@ -350,7 +350,7 @@ async def test_review_confirmation_declined_does_not_stamp(
     ) as c:
         await c.call_tool("maintenance_report", {})
         result = await c.call_tool("maintenance_confirm_review", {"summary": "fine"})
-    assert result.is_error and load_review() is None
+    assert result.is_error and load_record() is None
 
 
 async def test_review_confirmation_still_needs_a_recent_report_on_modern(tmp_path: Path) -> None:
@@ -359,7 +359,7 @@ async def test_review_confirmation_still_needs_a_recent_report_on_modern(tmp_pat
         tmp_path, FakeApple(), fresh_review=False, elicit=answers, mode=MODERN
     ) as c:
         result = await c.call_tool("maintenance_confirm_review", {"summary": "fine"})
-    assert result.is_error and answers.forms == [] and load_review() is None
+    assert result.is_error and answers.forms == [] and load_record() is None
 
 
 async def test_review_state_replay_and_changed_summary_are_refused(tmp_path: Path) -> None:

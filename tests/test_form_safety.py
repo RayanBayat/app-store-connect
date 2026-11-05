@@ -131,7 +131,7 @@ async def test_review_reply_over_limit_is_refused_before_any_request(tmp_path: P
 
 
 async def test_review_form_escapes_nickname_title_and_reply(tmp_path: Path) -> None:
-    """Regression (reviews.py:76-77): API text went into the form unescaped."""
+    """Regression (customer_reviews.py): API text went into the form unescaped."""
     fake = FakeApple()
     forms: Forms = []
     review = resource(

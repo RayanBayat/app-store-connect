@@ -10,7 +10,7 @@ import pytest
 from mcp import Client
 from mcp.client.session import ClientRequestContext, ElicitationFnT
 
-from app_store_connect.review import load_review, stamp_review
+from app_store_connect.maintenance_record import load_record, stamp_record
 from app_store_connect.server import AppServer, create_app, snapshot_tool_names
 from app_store_connect.spec import APPLE_API_SPEC_VERSION
 
@@ -38,10 +38,10 @@ async def test_overdue_review_refuses_tools_and_never_calls_apple(tmp_path: Path
 
 async def test_old_review_is_overdue_and_fresh_one_is_not(tmp_path: Path) -> None:
     fake = apps_fake()
-    stamp_review(NOW - timedelta(days=40), "4.5.1", "old", [])
+    stamp_record(NOW - timedelta(days=40), "4.5.1", "old", [])
     async with connected(tmp_path, fake, fresh_review=False) as client:
         assert (await client.call_tool("list_apps", {})).is_error
-    stamp_review(NOW - timedelta(days=5), "4.5.1", "recent", [])
+    stamp_record(NOW - timedelta(days=5), "4.5.1", "recent", [])
     async with connected(tmp_path, fake, fresh_review=False) as client:
         assert not (await client.call_tool("list_apps", {})).is_error
 
@@ -89,7 +89,7 @@ async def test_confirm_review_stamps_only_on_accept_with_read_true(tmp_path: Pat
         result = await client.call_tool("maintenance_confirm_review", {"summary": "all fine"})
         assert not result.is_error
         assert not (await client.call_tool("list_apps", {})).is_error  # the gate reopened
-    review = load_review()
+    review = load_record()
     assert review is not None
     assert (review.outcome, review.spec_version) == ("all fine", APPLE_API_SPEC_VERSION)
     assert "list_apps" in review.tools
@@ -111,7 +111,7 @@ async def test_confirm_review_does_not_stamp_otherwise(
         result = await client.call_tool("maintenance_confirm_review", {"summary": "ok"})
     assert result.is_error
     assert "app-store-connect@main app-store-connect review" in text_of(result)
-    assert load_review() is None
+    assert load_record() is None
 
 
 async def test_confirm_review_without_elicitation_support_does_not_stamp(tmp_path: Path) -> None:
@@ -120,14 +120,14 @@ async def test_confirm_review_without_elicitation_support_does_not_stamp(tmp_pat
         result = await client.call_tool("maintenance_confirm_review", {"summary": "ok"})
     assert result.is_error
     assert "terminal" in text_of(result)
-    assert load_review() is None
+    assert load_record() is None
 
 
 async def test_confirm_review_rejects_empty_summary(tmp_path: Path) -> None:
     async with connected(tmp_path, apps_fake(), fresh_review=False) as client:
         result = await client.call_tool("maintenance_confirm_review", {"summary": "  "})
     assert result.is_error
-    assert load_review() is None
+    assert load_record() is None
 
 
 async def test_degraded_mode_returns_startup_error_for_every_call() -> None:

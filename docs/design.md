@@ -5,7 +5,7 @@ A short guide for contributors: how the server works, where the code lives, and 
 ## The flow of one tool call
 
 1. **Start.** The MCP client starts the server with `uvx`. The server reads its settings from environment variables (`config.py`) and refuses to run if the key file can be read by other users.
-2. **Gate.** Before any Apple tool runs, `server.py` checks the monthly review (`review.py`). If it's missing or older than `ASC_REVIEW_MAX_DAYS`, the call is refused and Claude is told to run the review.
+2. **Gate.** Before any Apple tool runs, `server.py` checks the maintenance record (`maintenance_record.py`). If it's missing or older than `ASC_REVIEW_MAX_DAYS`, the call is refused and Claude is told to run the review.
 3. **Sign.** `auth.py` makes a short-lived signed pass (a JWT, valid for 15 minutes) from the `.p8` key. It is sent only to `api.appstoreconnect.apple.com`.
 4. **Call Apple.** `client.py` sends the request. It only allows endpoints listed in `ENDPOINTS_USED` (`spec.py`), checks every ID, never follows redirects, and limits response size.
 5. **Read tools** return Apple's data. Text written by people outside the team is wrapped in untrusted-content markers carrying a random value (`tools/base.py`), so it can't fake the end of the marker.
@@ -76,15 +76,19 @@ Every fetch has a size cap and a timeout. Anything that couldn't be checked is s
 | Path | What it does |
 |---|---|
 | `server.py` | Tool list, the monthly gate, dispatching calls |
-| `tools/` | One file per area: apps, versions, builds, beta, localizations, screenshots, reviews, availability (with territories), pricing |
+| `tools/` | One file per area: apps, versions, builds, beta, localizations, screenshots, customer_reviews, app_review, availability (with territories), pricing |
 | `confirmflow.py`, `tools/confirm.py` | Human approval on both protocol versions |
 | `client.py`, `spec.py` | Talking to Apple; the allowed endpoint list |
 | `auth.py`, `config.py` | Signing; settings and key checks |
-| `review.py`, `report.py`, `maintenance.py` | The monthly review |
+| `maintenance_record.py`, `report.py`, `maintenance.py` | The monthly review |
 | `cli.py` | `serve`, `status`, `review`, `doctor` |
 
 ## Words used here
 
+- **Three kinds of "review".** The word is used for three different things, and the code keeps them apart:
+  - **Customer review:** a rating and text that a customer wrote on the App Store (`tools/customer_reviews.py`). You can read them and publish a public reply.
+  - **App Review:** Apple's check of an app version before it can go on the App Store (`tools/app_review.py`). `submit_for_app_review` sends a version to it.
+  - **Monthly maintenance review:** the human check of this server's own report (`maintenance_record.py` stores the proof, `report.py` builds the report). The CLI command `review` and the tool `maintenance_confirm_review` belong to it.
 - **MCP:** a standard way to give an AI assistant tools.
 - **Elicitation:** a question the server asks the human, shown by the client.
 - **JWT:** a short-lived signed pass made from your key.

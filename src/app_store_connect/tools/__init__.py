@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from app_store_connect.tools import (
     agerating,
+    app_review,
     apps,
     availability,
     beta,
     builds,
+    customer_reviews,
     localizations,
     pricing,
-    reviews,
     screenshots,
     versions,
 )
@@ -23,7 +24,8 @@ _MODULES = (
     beta,
     localizations,
     screenshots,
-    reviews,
+    app_review,
+    customer_reviews,
     availability,
     pricing,
     agerating,

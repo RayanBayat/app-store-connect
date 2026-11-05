@@ -1,4 +1,4 @@
-"""Tests for review.py: fail-closed rules, history cap, atomic 0600 writes."""
+"""Tests for maintenance_record.py: fail-closed rules, history cap, atomic 0600 writes."""
 
 from __future__ import annotations
 
@@ -9,8 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from app_store_connect import review
-from app_store_connect.review import Review, check_review, load_review, stamp_review
+from app_store_connect import maintenance_record
+from app_store_connect.maintenance_record import (
+    MaintenanceRecord,
+    check_record,
+    load_record,
+    stamp_record,
+)
 
 from .conftest import NOW
 
@@ -34,21 +39,21 @@ def write_raw(state: Path, days_ago: int, tools: list[str] | None = None) -> Non
 
 
 def test_missing_file_is_overdue(state: Path) -> None:
-    result = check_review(load_review(), NOW, 30)
+    result = check_record(load_record(), NOW, 30)
     assert result.overdue
     assert "never been done" in result.message
 
 
 def test_fresh_review_is_not_overdue(state: Path) -> None:
     write_raw(state, 29)
-    result = check_review(load_review(), NOW, 30)
+    result = check_record(load_record(), NOW, 30)
     assert not result.overdue
     assert result.days_left == 1
 
 
 def test_review_at_limit_is_overdue_and_message_has_details(state: Path) -> None:
     write_raw(state, 30)
-    result = check_review(load_review(), NOW, 30)
+    result = check_record(load_record(), NOW, 30)
     assert result.overdue
     assert "overdue (last review 2026-10-04, 30 days ago; limit 30 days)" in result.message
     assert "maintenance_report" in result.message
@@ -56,30 +61,30 @@ def test_review_at_limit_is_overdue_and_message_has_details(state: Path) -> None
 
 def test_custom_limit_applies(state: Path) -> None:
     write_raw(state, 10)
-    assert check_review(load_review(), NOW, 7).overdue
+    assert check_record(load_record(), NOW, 7).overdue
 
 
 def test_corrupt_file_is_overdue(state: Path) -> None:
     state.mkdir(parents=True)
     (state / "review.json").write_text("{not json", encoding="utf-8")
-    assert load_review() is None
+    assert load_record() is None
 
 
 def test_naive_timestamp_is_overdue(state: Path) -> None:
     state.mkdir(parents=True)
     (state / "review.json").write_text('{"reviewed_at": "2026-11-01T00:00:00"}', encoding="utf-8")
-    assert load_review() is None
+    assert load_record() is None
 
 
 def test_wrong_shape_is_overdue(state: Path) -> None:
     state.mkdir(parents=True)
     (state / "review.json").write_text('["a"]', encoding="utf-8")
-    assert load_review() is None
+    assert load_record() is None
 
 
 def test_future_date_is_overdue(state: Path) -> None:
     write_raw(state, -2)
-    result = check_review(load_review(), NOW, 30)
+    result = check_record(load_record(), NOW, 30)
     assert result.overdue
     assert "in the future" in result.message
 
@@ -88,11 +93,11 @@ def test_small_clock_difference_is_tolerated(state: Path) -> None:
     state.mkdir(parents=True)
     when = (NOW + timedelta(minutes=30)).isoformat()
     (state / "review.json").write_text(json.dumps({"reviewed_at": when}), encoding="utf-8")
-    assert not check_review(load_review(), NOW, 30).overdue
+    assert not check_record(load_record(), NOW, 30).overdue
 
 
 def test_stamp_writes_strict_permissions_and_expected_fields(state: Path) -> None:
-    stamp_review(NOW, "0.22.0", "all good", ["b", "a"])
+    stamp_record(NOW, "0.22.0", "all good", ["b", "a"])
     path = state / "review.json"
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert stat.S_IMODE(state.stat().st_mode) == 0o700
@@ -114,7 +119,7 @@ def test_stamp_is_atomic_via_rename(state: Path, monkeypatch: pytest.MonkeyPatch
         return real(self, target)
 
     monkeypatch.setattr(Path, "replace", spy)
-    stamp_review(NOW, "1", "x", None)
+    stamp_record(NOW, "1", "x", None)
     assert len(calls) == 1
     assert calls[0][1] == state / "review.json"
 
@@ -125,23 +130,23 @@ def test_failed_write_leaves_no_temp_file(state: Path, monkeypatch: pytest.Monke
 
     monkeypatch.setattr(Path, "replace", boom)
     with pytest.raises(OSError, match="disk full"):
-        stamp_review(NOW, "1", "x", None)
+        stamp_record(NOW, "1", "x", None)
     assert list(state.iterdir()) == []
 
 
 def test_stamp_without_tools_keeps_previous_snapshot(state: Path) -> None:
     write_raw(state, 5, tools=["a", "b"])
-    stamp_review(NOW, "2", "y", None)
-    loaded = load_review()
-    assert isinstance(loaded, Review)
+    stamp_record(NOW, "2", "y", None)
+    loaded = load_record()
+    assert isinstance(loaded, MaintenanceRecord)
     assert loaded.tools == ("a", "b")
     assert loaded.history[0].spec_version == "0.22.0"
 
 
 def test_history_is_capped_at_12_newest_first(state: Path) -> None:
     for i in range(15):
-        stamp_review(NOW, f"v{i}", "x", None)
-    loaded = load_review()
+        stamp_record(NOW, f"v{i}", "x", None)
+    loaded = load_record()
     assert loaded is not None
-    assert len(loaded.history) == review.HISTORY_LIMIT == 12
+    assert len(loaded.history) == maintenance_record.HISTORY_LIMIT == 12
     assert loaded.history[0].spec_version == "v13"

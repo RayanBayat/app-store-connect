@@ -12,8 +12,8 @@ import httpx
 import pytest
 
 from app_store_connect import report
+from app_store_connect.maintenance_record import MaintenanceRecord
 from app_store_connect.report import ReportInputs, build_report
-from app_store_connect.review import Review
 from app_store_connect.spec import APPLE_API_SPEC_VERSION, ENDPOINTS_USED
 from app_store_connect.tools import versions
 
@@ -59,7 +59,7 @@ def make_inputs(
     *,
     latest: dict[str, str] | None = None,
     vulns: bool = False,
-    review: Review | None = None,
+    review: MaintenanceRecord | None = None,
     tools: list[str] | None = None,
     spec_status: int = 200,
 ) -> ReportInputs:
@@ -180,7 +180,7 @@ def test_vulnerabilities_listed() -> None:
 
 
 def test_tool_changes_against_snapshot() -> None:
-    snapshot = Review(NOW, "4.5.1", "ok", tools=("a", "b"))
+    snapshot = MaintenanceRecord(NOW, "4.5.1", "ok", tools=("a", "b"))
     text = build_report(make_inputs(review=snapshot, tools=["b", "c"]))
     assert "- added: `c`" in text
     assert "- removed: `a`" in text

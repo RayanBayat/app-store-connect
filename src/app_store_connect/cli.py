@@ -23,7 +23,7 @@ from app_store_connect.config import (
     parse_review_days,
 )
 from app_store_connect.maintenance import make_report, status_text
-from app_store_connect.review import load_review, now_local, stamp_review
+from app_store_connect.maintenance_record import load_record, now_local, stamp_record
 from app_store_connect.server import create_app, serve_stdio, snapshot_tool_names
 from app_store_connect.spec import APPLE_API_SPEC_VERSION
 
@@ -55,7 +55,7 @@ def cmd_status(env: Mapping[str, str]) -> int:
     text = status_text(
         max_days=parse_review_days(env.get("ASC_REVIEW_MAX_DAYS")),
         now=now_local(),
-        review=load_review(),
+        review=load_record(),
         writes=is_truthy(env.get("ASC_ALLOW_WRITES")),
     )
     print(text)
@@ -78,7 +78,7 @@ def cmd_review(*, interactive: bool, ask: Ask, report_fn: ReportFn) -> int:
         print("Not recorded.")
         return 1
     note = ask("One line about what you decided (Enter to skip): ").strip()
-    stamp_review(
+    stamp_record(
         now_local(), APPLE_API_SPEC_VERSION, note or DEFAULT_OUTCOME, snapshot_tool_names()
     )
     print("Review recorded. App Store Connect tools are available again.")
@@ -129,7 +129,7 @@ def cmd_doctor(env: Mapping[str, str], *, online: bool) -> int:
     review_lines = status_text(
         max_days=parse_review_days(env.get("ASC_REVIEW_MAX_DAYS")),
         now=now_local(),
-        review=load_review(),
+        review=load_record(),
         writes=None,
     )
     print("\n".join(lines))

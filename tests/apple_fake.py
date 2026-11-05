@@ -17,8 +17,8 @@ from mcp.client.session import ElicitationFnT
 from app_store_connect.auth import TokenProvider
 from app_store_connect.client import AscClient
 from app_store_connect.maintenance import Maintenance
+from app_store_connect.maintenance_record import stamp_record
 from app_store_connect.report import ReportFacts, ReportResult
-from app_store_connect.review import stamp_review
 from app_store_connect.server import AppServer
 from app_store_connect.spec import APPLE_API_SPEC_VERSION
 
@@ -116,7 +116,7 @@ async def connected(
     """Run the real server in-process against the fake Apple API and connect a test client."""
     config = make_config(tmp_path / "keys", allow_writes=allow_writes, root=root)
     if fresh_review:
-        stamp_review(NOW, APPLE_API_SPEC_VERSION, "test", ["list_apps"])
+        stamp_record(NOW, APPLE_API_SPEC_VERSION, "test", ["list_apps"])
     client = AscClient(TokenProvider(config), transport=httpx.MockTransport(fake.handler))
     maintenance = Maintenance(config, clock=lambda: NOW, report_fn=fake_report)
     app = AppServer(config, client, maintenance=maintenance, clock=lambda: NOW)

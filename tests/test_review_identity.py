@@ -16,8 +16,13 @@ from mcp.server.session import ServerSession
 from app_store_connect import __version__, identity, maintenance
 from app_store_connect.identity import CodeIdentity, commit_from_direct_url, compare_with_review
 from app_store_connect.maintenance import Maintenance
+from app_store_connect.maintenance_record import (
+    MaintenanceRecord,
+    load_record,
+    record_path,
+    stamp_record,
+)
 from app_store_connect.report import ReportFacts, ReportResult, build_report
-from app_store_connect.review import Review, load_review, review_path, stamp_review
 
 from .apple_fake import FACTS, FakeApple, connected, text_of
 from .conftest import NOW
@@ -38,22 +43,22 @@ def test_commit_is_read_from_direct_url_json() -> None:
 
 def test_stamp_records_version_and_commit(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(identity, "_direct_url_text", lambda: DIRECT_URL)
-    stamp_review(NOW, "4.5.1", "ok", [])
-    data = json.loads(review_path().read_text(encoding="utf-8"))
+    stamp_record(NOW, "4.5.1", "ok", [])
+    data = json.loads(record_path().read_text(encoding="utf-8"))
     assert data["code_commit"] == "a" * 40
     assert data["code_version"] == __version__
-    review = load_review()
+    review = load_record()
     assert review is not None
     assert review.code == CodeIdentity(__version__, "a" * 40)
 
 
 def test_old_record_without_identity_still_loads_and_gate_age_is_unchanged() -> None:
-    stamp_review(NOW, "4.5.1", "ok", [])
-    path = review_path()
+    stamp_record(NOW, "4.5.1", "ok", [])
+    path = record_path()
     data = json.loads(path.read_text(encoding="utf-8"))
     del data["code_version"], data["code_commit"]
     path.write_text(json.dumps(data), encoding="utf-8")
-    review = load_review()
+    review = load_record()
     assert review is not None and review.code is None
 
 
@@ -78,13 +83,13 @@ def test_first_review_report_and_form_say_there_is_no_earlier_review() -> None:
 
 
 def test_old_record_without_identity_keeps_the_did_not_record_text() -> None:
-    old = Review(NOW, "4.5.1", "ok")
+    old = MaintenanceRecord(NOW, "4.5.1", "ok")
     assert "did not record" in report_text(old)
 
 
 def test_report_and_status_show_the_difference(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(identity, "_direct_url_text", lambda: None)
-    old = stamp_review(NOW, "4.5.1", "ok", [], CodeIdentity("0.0.1", "d" * 40))
+    old = stamp_record(NOW, "4.5.1", "ok", [], CodeIdentity("0.0.1", "d" * 40))
     text = report_text(old)
     assert "## Running code" in text
     assert "NOT the code that was last reviewed" in text
@@ -92,7 +97,7 @@ def test_report_and_status_show_the_difference(monkeypatch: pytest.MonkeyPatch) 
     assert "NOT the code that was last reviewed" in status
 
 
-def report_text(review: Review | None) -> str:
+def report_text(review: MaintenanceRecord | None) -> str:
     return build_report(replace(make_inputs(), review=review))
 
 
@@ -119,7 +124,7 @@ async def test_confirm_without_a_report_in_this_session_is_refused_without_a_for
     assert result.is_error
     assert "maintenance_report" in text_of(result)
     assert forms.messages == []
-    assert load_review() is None
+    assert load_record() is None
 
 
 def maintenance_with_clock(tmp_path: Path, now: list[datetime]) -> Maintenance:

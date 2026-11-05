@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from app_store_connect import cli
 from app_store_connect.auth import TokenProvider
 from app_store_connect.client import AscClient
-from app_store_connect.review import load_review, stamp_review
+from app_store_connect.maintenance_record import load_record, stamp_record
 from app_store_connect.spec import APPLE_API_SPEC_VERSION
 
 from .conftest import NOW
@@ -46,7 +46,7 @@ def test_review_refuses_without_a_terminal(capsys: pytest.CaptureFixture[str]) -
     code = cli.cmd_review(interactive=False, ask=lambda _p: "y", report_fn=lambda _t: "REPORT")
     assert code == 2
     assert "interactive terminal" in capsys.readouterr().err
-    assert load_review() is None
+    assert load_record() is None
 
 
 def test_review_stamps_on_y(capsys: pytest.CaptureFixture[str]) -> None:
@@ -56,7 +56,7 @@ def test_review_stamps_on_y(capsys: pytest.CaptureFixture[str]) -> None:
     )
     assert code == 0
     assert "REPORT TEXT" in capsys.readouterr().out
-    review = load_review()
+    review = load_record()
     assert review is not None
     assert review.outcome == "looked fine"
     assert review.spec_version == APPLE_API_SPEC_VERSION
@@ -67,13 +67,13 @@ def test_review_stamps_on_y(capsys: pytest.CaptureFixture[str]) -> None:
 def test_review_does_not_stamp_unless_yes(reply: str) -> None:
     code = cli.cmd_review(interactive=True, ask=lambda _p: reply, report_fn=lambda _t: "R")
     assert code == 1
-    assert load_review() is None
+    assert load_record() is None
 
 
 def test_review_keeps_old_review_when_declined() -> None:
-    stamp_review(NOW, "4.5.0", "earlier", ["a"])
+    stamp_record(NOW, "4.5.0", "earlier", ["a"])
     cli.cmd_review(interactive=True, ask=lambda _p: "n", report_fn=lambda _t: "R")
-    review = load_review()
+    review = load_record()
     assert review is not None
     assert review.outcome == "earlier"
 
