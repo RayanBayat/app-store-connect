@@ -27,9 +27,22 @@ A change without its changelog line and doc updates is not finished.
   library's docs; do not rely on memory (the MCP Python SDK in particular changes between major
   versions).
 - Python >= 3.12, `src/` layout, `uv` for everything. Never use `pip install`.
-- Everything is typed (`mypy --strict`). Short functions, docstrings that explain *why*, no
-  clever tricks: a junior developer must be able to read it.
+- Everything is typed (`mypy --strict`).
 - Imports at the top of the file. No `print` outside the CLI.
+
+## Readable by a beginner (required)
+
+Every file in this repository (code, tests, scripts, CI configuration and these docs) must be
+easy for a **beginner computer science student** to read, learn from and debug.
+
+- **Clean code.** Small functions that each do one thing, and clear names (no abbreviations).
+  Flat control flow with early returns. No clever tricks.
+- **Explain why.** Each module starts with a short paragraph saying what it is for and how it fits
+  in. Comments explain *why*, never *what*.
+- **Debuggable.** Error messages say what went wrong and what to do next. Nothing fails silently.
+  Tests read like small examples of how the code is used.
+- **Consistent.** Follow the patterns already in the repo, so learning one tool teaches the rest.
+- **Review rule.** If a beginner couldn't follow a change, rewrite it before merging.
 
 ## Commands
 

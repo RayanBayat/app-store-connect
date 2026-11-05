@@ -2,6 +2,7 @@
 
 ## 0.3.0 (unreleased)
 
+- Contributor rules: everything in the repository must be readable by a beginner (AGENTS.md).
 - New `get_age_rating` and `update_age_rating`: see and answer Apple's age rating questionnaire,
   which must be fully answered before an update can be submitted (Apple otherwise refuses with
   "You must provide a value for the attribute 'socialMedia'"). The read tool lists every
