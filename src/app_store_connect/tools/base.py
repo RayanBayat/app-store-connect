@@ -193,6 +193,13 @@ def attributes_of(item: dict[str, Any]) -> dict[str, Any]:
     return attributes
 
 
+def related_id(item: dict[str, Any], name: str) -> str | None:
+    """The ID that a resource's relationship `name` points at (None when it points at nothing)."""
+    data = ((item.get("relationships") or {}).get(name) or {}).get("data") or {}
+    related = data.get("id")
+    return str(related) if related is not None else None
+
+
 def to_text(value: Any) -> str:
     """Render a result as readable JSON text."""
     return json.dumps(value, indent=2, ensure_ascii=False)

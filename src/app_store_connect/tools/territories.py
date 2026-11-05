@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Final
 
-from app_store_connect.tools.base import ToolInputError
+from app_store_connect.tools.base import ToolInputError, related_id
 
 CODE_PATTERN: Final = re.compile(r"[A-Z]{3}")
 # Only for readability. Not a list of valid territories: Apple's own answer decides that.
@@ -43,5 +43,4 @@ def valid_code(value: object, name: str = "territory") -> str:
 
 def territory_of(item: dict[str, Any]) -> str:
     """The territory code a resource points at (its `territory` relationship; codes are the IDs)."""
-    data = ((item.get("relationships") or {}).get("territory") or {}).get("data") or {}
-    return str(data.get("id", "?"))
+    return related_id(item, "territory") or "?"

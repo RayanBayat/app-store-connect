@@ -97,6 +97,9 @@ LEGAL_NOTE: Final = (
 )
 
 
+ALL_QUESTIONS: Final = (*BOOLEAN_QUESTIONS, *FREQUENCY_QUESTIONS)
+
+
 def show_answer(name: str, value: Any) -> str:
     """Plain-English form of a stored or new answer; None means the question is unanswered."""
     if value is None:
@@ -113,34 +116,36 @@ def is_editable(state: object) -> bool:
     return state in EDITABLE_STATES
 
 
+def answer_text(name: str, attributes: dict[str, Any]) -> str:
+    """How one field of the declaration is shown: a question in words, any other field as is."""
+    if name in ALL_QUESTIONS:
+        return show_answer(name, attributes.get(name))
+    return str(attributes.get(name) or NOT_ANSWERED)
+
+
+def describe_declaration(info: dict[str, Any], declaration: dict[str, Any]) -> dict[str, Any]:
+    """One app info's age rating for the model: its state, the answers, and what is unanswered."""
+    attributes = declaration.get("attributes") or {}
+    state = (info.get("attributes") or {}).get("state")
+    return {
+        "app_info_id": str(info["id"]),
+        "state": state,
+        "editable": is_editable(state),
+        "declaration_id": declaration.get("id"),
+        "answers": {name: answer_text(name, attributes) for name in DECLARATION_FIELDS},
+        "not_answered": [LABELS[name] for name in ALL_QUESTIONS if attributes.get(name) is None],
+    }
+
+
 async def get_age_rating(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Return the answers (and unanswered questions) for each app info of an app."""
     infos = await ctx.client.paginate("/v1/apps/{id}/appInfos", item_id=require_id(args, "app_id"))
     result: list[dict[str, Any]] = []
     for info in infos:
-        info_id = str(info["id"])
         response = await ctx.client.request(
-            "GET", "/v1/appInfos/{id}/ageRatingDeclaration", item_id=info_id
+            "GET", "/v1/appInfos/{id}/ageRatingDeclaration", item_id=str(info["id"])
         )
-        data = resource_of(response)
-        attributes = data.get("attributes") or {}
-        state = (info.get("attributes") or {}).get("state")
-        questions = (*BOOLEAN_QUESTIONS, *FREQUENCY_QUESTIONS)
-        result.append(
-            {
-                "app_info_id": info_id,
-                "state": state,
-                "editable": is_editable(state),
-                "declaration_id": data.get("id"),
-                "answers": {
-                    name: show_answer(name, attributes.get(name))
-                    if name in questions
-                    else (attributes.get(name) or NOT_ANSWERED)
-                    for name in DECLARATION_FIELDS
-                },
-                "not_answered": [LABELS[n] for n in questions if attributes.get(n) is None],
-            }
-        )
+        result.append(describe_declaration(info, resource_of(response)))
     return to_text(result)
 
 
@@ -206,12 +211,12 @@ async def update_age_rating(ctx: ToolContext, args: dict[str, Any]) -> str:
     )
     declaration = resource_of(declaration_response)
     old = declaration.get("attributes") or {}
-    changed = {n: v for n, v in wanted.items() if old.get(n) != v}
+    changed = {name: value for name, value in wanted.items() if old.get(name) != value}
     if not changed:
         return "Nothing to change: the answers are already the same."
     lines = [
-        f"{LABELS[n]}: {show_answer(n, old.get(n))}  ->  {show_answer(n, v)}"
-        for n, v in changed.items()
+        f"{LABELS[name]}: {show_answer(name, old.get(name))}  ->  {show_answer(name, value)}"
+        for name, value in changed.items()
     ]
     await confirm_change(ctx, "Change the age rating answers", [*lines, "", LEGAL_NOTE])
     declaration_id = str(declaration["id"])

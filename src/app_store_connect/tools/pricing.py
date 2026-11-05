@@ -24,7 +24,11 @@ from app_store_connect.tools.confirm import confirm_change
 from app_store_connect.tools.lookups import app_label, is_zero, price_overview
 from app_store_connect.tools.territories import describe, valid_code
 
-MAX_PRICE_POINTS = 2000  # Apple has under a thousand price points per territory
+MAX_PRICE_POINTS: Final = 2000  # Apple has under a thousand price points per territory
+# Which territory's price Apple uses to work out all the others. Sweden is the maintainer's home
+# market. For a free app the choice changes nothing for customers (0 is free everywhere); pass
+# `base_territory` to use another country.
+DEFAULT_BASE_TERRITORY: Final = "SWE"
 
 
 async def find_free_price_point(ctx: ToolContext, app_id: str, territory: str) -> str:
@@ -69,7 +73,7 @@ def free_price_body(app_id: str, territory: str, point_id: str) -> dict[str, Any
 async def set_free_price(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Make the app free in every territory (POST /v1/appPriceSchedules with a price of 0)."""
     app_id = require_id(args, "app_id")
-    territory = valid_code(args.get("base_territory", "SWE"), "base_territory")
+    territory = valid_code(args.get("base_territory", DEFAULT_BASE_TERRITORY), "base_territory")
     overview = await price_overview(ctx, app_id)
     current = overview["currentManualPrice"]
     if current is not None:
@@ -115,7 +119,8 @@ WRITE_TOOLS: Final[list[ToolSpec]] = [
         properties={
             "app_id": string_prop("The app's ID."),
             "base_territory": string_prop(
-                "3-letter code of the base territory (default SWE).", default="SWE"
+                f"3-letter code of the base territory (default {DEFAULT_BASE_TERRITORY}).",
+                default=DEFAULT_BASE_TERRITORY,
             ),
         },
         required=("app_id",),

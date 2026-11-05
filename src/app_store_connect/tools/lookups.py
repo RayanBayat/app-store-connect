@@ -12,7 +12,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app_store_connect.client import AscApiError
-from app_store_connect.tools.base import ToolContext, attributes_of, resource_of
+from app_store_connect.tools.base import ToolContext, attributes_of, related_id, resource_of
 from app_store_connect.tools.territories import describe
 
 
@@ -69,6 +69,33 @@ def price_summary(price: dict[str, Any] | None, base: str | None) -> str:
     return f"Price: {kind} in {where}{base_note}; Apple sets the other territories from it."
 
 
+def current_manual_price(
+    page: dict[str, Any], base: str | None, today: str
+) -> dict[str, Any] | None:
+    """The manual price that applies `today` (the latest one that started), or None.
+
+    `page` is Apple's answer for the schedule's manual prices, fetched with the price points and
+    territories included, so the amount and currency can be read from `included`.
+    """
+    current = sorted(
+        (price for price in page.get("data", []) if is_current(price, today)),
+        key=lambda price: (price.get("attributes") or {}).get("startDate") or "",
+    )
+    if not current:
+        return None
+    price = current[-1]
+    included = {(item.get("type"), item.get("id")): item for item in page.get("included", [])}
+    territory = related_id(price, "territory") or base
+    point = included.get(("appPricePoints", related_id(price, "appPricePoint"))) or {}
+    territory_item = included.get(("territories", territory)) or {}
+    return {
+        "territory": territory,
+        "customerPrice": (point.get("attributes") or {}).get("customerPrice"),
+        "currency": (territory_item.get("attributes") or {}).get("currency"),
+        "startDate": (price.get("attributes") or {}).get("startDate"),
+    }
+
+
 async def price_overview(ctx: ToolContext, app_id: str) -> dict[str, Any]:
     """Read the app's price schedule: base territory and the manual price that applies today."""
     schedule = await data_or_none(
@@ -93,26 +120,7 @@ async def price_overview(ctx: ToolContext, app_id: str) -> dict[str, Any]:
         item_id=schedule_id,
         params={"include": "appPricePoint,territory", "limit": "200"},
     )
-    included = {(i.get("type"), i.get("id")): i for i in page.get("included", [])}
-    today = date.today().isoformat()
-    current = sorted(
-        (p for p in page.get("data", []) if is_current(p, today)),
-        key=lambda p: (p.get("attributes") or {}).get("startDate") or "",
-    )
-    manual = None
-    if current:
-        price = current[-1]
-        relations = price.get("relationships") or {}
-        point_id = ((relations.get("appPricePoint") or {}).get("data") or {}).get("id")
-        territory = ((relations.get("territory") or {}).get("data") or {}).get("id") or base
-        point = included.get(("appPricePoints", point_id)) or {}
-        territory_item = included.get(("territories", territory)) or {}
-        manual = {
-            "territory": territory,
-            "customerPrice": (point.get("attributes") or {}).get("customerPrice"),
-            "currency": (territory_item.get("attributes") or {}).get("currency"),
-            "startDate": (price.get("attributes") or {}).get("startDate"),
-        }
+    manual = current_manual_price(page, base, date.today().isoformat())
     return {
         "hasPriceSchedule": True,
         "baseTerritory": base,

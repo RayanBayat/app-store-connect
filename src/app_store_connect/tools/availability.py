@@ -228,41 +228,39 @@ async def create_availability(ctx: ToolContext, app_id: str, codes: list[str], l
     return f"Created the availability: on sale in {', '.join(describe(c) for c in codes)}."
 
 
-async def set_territory_availability(ctx: ToolContext, args: dict[str, Any]) -> str:
-    """Switch the app on or off in the given territories.
+def is_available(item: dict[str, Any]) -> bool:
+    """True when this territory availability says the app is on sale there."""
+    return bool((item.get("attributes") or {}).get("available"))
 
-    The way Apple documents it for an app that already has an availability: change one
-    territory at a time with PATCH /v1/territoryAvailabilities/{id} and the attribute
-    `available`. If the app has no availability yet there is nothing to patch, so the create
-    flow (POST /v2/appAvailabilities) is used instead, and only to switch territories on.
+
+def plan_territory_changes(
+    codes: list[str], by_code: dict[str, dict[str, Any]], wanted: bool
+) -> list[dict[str, Any]]:
+    """The territory availabilities that must change to reach `wanted`, in the order given.
+
+    A code Apple does not list is refused, so the form never shows a change that cannot happen.
     """
-    app_id = require_id(args, "app_id")
-    codes = requested_codes(args)
-    wanted = args.get("available")
-    if not isinstance(wanted, bool):
-        raise ToolInputError("Argument 'available' must be true or false.")
-    _, name_label = await app_label(ctx, app_id)
-    availability, items = await fetch_availability(ctx, app_id)
-    if availability is None:
-        if not wanted:
-            return "Nothing to change: the app has no availability, so it is on sale nowhere."
-        return await create_availability(ctx, app_id, codes, name_label)
-    by_code = {territory_of(item): item for item in items}
-    unknown = [c for c in codes if c not in by_code]
+    unknown = [code for code in codes if code not in by_code]
     if unknown:
         raise ToolInputError(f"Apple does not list these territories: {', '.join(unknown)}.")
-    changes = [
-        by_code[c]
-        for c in codes
-        if bool((by_code[c].get("attributes") or {}).get("available")) != wanted
-    ]
-    if not changes:
-        return "Nothing to change: every territory already has that setting."
-    lines = [f"App: {name_label}"]
+    return [by_code[code] for code in codes if is_available(by_code[code]) != wanted]
+
+
+def territory_form_lines(
+    app_text: str, codes: list[str], by_code: dict[str, dict[str, Any]], wanted: bool
+) -> list[str]:
+    """The confirmation form: one 'old -> new' line for every territory the human asked about."""
+    lines = [f"App: {app_text}"]
     for code in codes:
-        old = bool((by_code[code].get("attributes") or {}).get("available"))
+        old = is_available(by_code[code])
         lines.append(f"{describe(code)}: {state_word(old)}  ->  {state_word(wanted)}")
-    await confirm_change(ctx, "Change where the app is on sale", lines)
+    return lines
+
+
+async def patch_territories(
+    ctx: ToolContext, changes: list[dict[str, Any]], wanted: bool
+) -> list[str]:
+    """PATCH each territory once. Returns the codes changed; on an error, says which were done."""
     done: list[str] = []
     for item in changes:
         body = {
@@ -280,6 +278,35 @@ async def set_territory_availability(ctx: ToolContext, args: dict[str, Any]) -> 
             changed = ", ".join(done) or "none"
             raise AscError(f"{exc} Already changed before the error: {changed}.") from exc
         done.append(territory_of(item))
+    return done
+
+
+async def set_territory_availability(ctx: ToolContext, args: dict[str, Any]) -> str:
+    """Switch the app on or off in the given territories.
+
+    The way Apple documents it for an app that already has an availability: change one
+    territory at a time with PATCH /v1/territoryAvailabilities/{id} and the attribute
+    `available`. If the app has no availability yet there is nothing to patch, so the create
+    flow (POST /v2/appAvailabilities) is used instead, and only to switch territories on.
+    """
+    app_id = require_id(args, "app_id")
+    codes = requested_codes(args)
+    wanted = args.get("available")
+    if not isinstance(wanted, bool):
+        raise ToolInputError("Argument 'available' must be true or false.")
+    _, app_text = await app_label(ctx, app_id)
+    availability, items = await fetch_availability(ctx, app_id)
+    if availability is None:
+        if not wanted:
+            return "Nothing to change: the app has no availability, so it is on sale nowhere."
+        return await create_availability(ctx, app_id, codes, app_text)
+    by_code = {territory_of(item): item for item in items}
+    changes = plan_territory_changes(codes, by_code, wanted)
+    if not changes:
+        return "Nothing to change: every territory already has that setting."
+    lines = territory_form_lines(app_text, codes, by_code, wanted)
+    await confirm_change(ctx, "Change where the app is on sale", lines)
+    done = await patch_territories(ctx, changes, wanted)
     return f"The app is now {state_word(wanted)} in: {', '.join(describe(c) for c in done)}."
 
 
