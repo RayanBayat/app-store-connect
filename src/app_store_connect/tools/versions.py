@@ -6,11 +6,13 @@ from typing import Any, Final
 
 from app_store_connect.tools.base import (
     LIMIT_PROP,
+    PLATFORMS,
     ToolContext,
-    ToolInputError,
     ToolSpec,
     attributes_of,
+    choice,
     limit_arg,
+    optional_choice,
     optional_str,
     relationship,
     require_str,
@@ -21,10 +23,15 @@ from app_store_connect.tools.base import (
 )
 from app_store_connect.tools.confirm import change_line, confirm_change
 
-# appVersionState replaces the deprecated appStoreState in Apple's current spec.
-PLATFORMS: Final = ("IOS", "MAC_OS", "TV_OS", "VISION_OS")
 RELEASE_TYPES: Final = ("MANUAL", "AFTER_APPROVAL", "SCHEDULED")
-VERSION_FIELDS = ("versionString", "platform", "appVersionState", "releaseType", "createdDate")
+# appVersionState replaces the deprecated appStoreState in Apple's current spec.
+VERSION_FIELDS: Final = (
+    "versionString",
+    "platform",
+    "appVersionState",
+    "releaseType",
+    "createdDate",
+)
 
 
 async def list_app_store_versions(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -51,24 +58,12 @@ async def get_version_status(ctx: ToolContext, args: dict[str, Any]) -> str:
     return to_text(summarize(resource_of(data), VERSION_FIELDS))
 
 
-def choice(
-    args: dict[str, Any], name: str, allowed: tuple[str, ...], default: str | None
-) -> str | None:
-    """Return args[name] if it is one of `allowed`, else `default` when absent."""
-    value = optional_str(args, name)
-    if value is None:
-        return default
-    if value not in allowed:
-        raise ToolInputError(f"Argument '{name}' must be one of: {', '.join(allowed)}.")
-    return value
-
-
 async def create_app_store_version(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Create a new App Store version (a draft; nothing is submitted)."""
     app_id = require_str(args, "app_id")
     version_string = require_str(args, "version_string")
     platform = choice(args, "platform", PLATFORMS, "IOS")
-    release_type = choice(args, "release_type", RELEASE_TYPES, None)
+    release_type = optional_choice(args, "release_type", RELEASE_TYPES)
     app = await ctx.client.request("GET", "/v1/apps/{id}", item_id=app_id)
     lines = [
         f"App: {attributes_of(resource_of(app)).get('name')} ({app_id})",

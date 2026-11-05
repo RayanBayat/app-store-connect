@@ -8,11 +8,9 @@ table of well-known names makes the output easier to read. An unknown code is sh
 from __future__ import annotations
 
 import re
-from collections.abc import Awaitable
 from typing import Any, Final
 
-from app_store_connect.client import AscApiError
-from app_store_connect.tools.base import ToolContext, ToolInputError, resource_of
+from app_store_connect.tools.base import ToolInputError
 
 CODE_PATTERN: Final = re.compile(r"[A-Z]{3}")
 # Only for readability. Not a list of valid territories: Apple's own answer decides that.
@@ -47,24 +45,3 @@ def territory_of(item: dict[str, Any]) -> str:
     """The territory code a resource points at (its `territory` relationship; codes are the IDs)."""
     data = ((item.get("relationships") or {}).get("territory") or {}).get("data") or {}
     return str(data.get("id", "?"))
-
-
-async def data_or_none(request: Awaitable[dict[str, Any]]) -> dict[str, Any] | None:
-    """Await a GET and return its `data`; None when Apple says 404 (nothing set up yet).
-
-    The caller writes the request itself, so the endpoint stays visible in the tool's code.
-    """
-    try:
-        data = (await request).get("data")
-    except AscApiError as exc:
-        if exc.status == 404:
-            return None
-        raise
-    return data if isinstance(data, dict) else None
-
-
-async def app_label(ctx: ToolContext, app_id: str) -> tuple[str, str]:
-    """(name, 'Name (ID)') of an app, for forms. The name is escaped when the form is built."""
-    app = resource_of(await ctx.client.request("GET", "/v1/apps/{id}", item_id=app_id))
-    name = str((app.get("attributes") or {}).get("name") or app_id)
-    return name, f"{name} ({app_id})"

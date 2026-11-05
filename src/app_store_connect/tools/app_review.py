@@ -11,10 +11,12 @@ from typing import Any, Final
 from app_store_connect.client import AscError
 from app_store_connect.tools.base import (
     MAX_LIMIT,
+    PLATFORMS,
     ToolContext,
     ToolRefusedError,
     ToolSpec,
     attributes_of,
+    choice,
     optional_str,
     relationship,
     require_str,
@@ -24,7 +26,6 @@ from app_store_connect.tools.base import (
     to_text,
 )
 from app_store_connect.tools.confirm import confirm_change
-from app_store_connect.tools.versions import PLATFORMS, choice
 
 
 async def get_review_submissions(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -41,7 +42,7 @@ async def get_review_submissions(ctx: ToolContext, args: dict[str, Any]) -> str:
 async def submit_for_app_review(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Submit an App Store version to Apple App Review (three API steps, one confirmation)."""
     app_id, version_id = require_str(args, "app_id"), require_str(args, "version_id")
-    platform = choice(args, "platform", PLATFORMS, "IOS") or "IOS"
+    platform = choice(args, "platform", PLATFORMS, "IOS")
     app = resource_of(await ctx.client.request("GET", "/v1/apps/{id}", item_id=app_id))
     await require_version_of_app(ctx, app_id, version_id)
     version = (await ctx.client.request("GET", "/v1/appStoreVersions/{id}", item_id=version_id))[

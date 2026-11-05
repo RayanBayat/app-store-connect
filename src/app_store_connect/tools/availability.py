@@ -23,14 +23,8 @@ from app_store_connect.tools.base import (
     to_text,
 )
 from app_store_connect.tools.confirm import confirm_change
-from app_store_connect.tools.pricing import price_overview
-from app_store_connect.tools.territories import (
-    app_label,
-    data_or_none,
-    describe,
-    territory_of,
-    valid_code,
-)
+from app_store_connect.tools.lookups import app_label, data_or_none, price_overview
+from app_store_connect.tools.territories import describe, territory_of, valid_code
 
 MAX_TERRITORIES: Final = 400  # Apple has about 175
 NAMED_IN_SUMMARY: Final = 10

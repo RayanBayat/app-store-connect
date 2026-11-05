@@ -19,8 +19,8 @@ from app_store_connect.tools.base import (
     summarize,
     to_text,
 )
-from app_store_connect.tools.beta import group_name
 from app_store_connect.tools.confirm import confirm_change
+from app_store_connect.tools.lookups import group_name
 
 BUILD_FIELDS = (
     "version",

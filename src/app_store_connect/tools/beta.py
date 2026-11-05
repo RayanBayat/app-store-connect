@@ -21,6 +21,7 @@ from app_store_connect.tools.base import (
     to_text,
 )
 from app_store_connect.tools.confirm import confirm_change
+from app_store_connect.tools.lookups import group_name
 
 EMAIL_PATTERN: Final = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 GROUP_FIELDS = ("name", "isInternalGroup", "publicLinkEnabled", "createdDate")
@@ -50,12 +51,6 @@ async def list_beta_testers(ctx: ToolContext, args: dict[str, Any]) -> str:
         params["filter[email]"] = email
     items = await ctx.client.paginate("/v1/betaTesters", params=params, max_items=limit_arg(args))
     return to_text([summarize(item, TESTER_FIELDS, wrap=TESTER_WRAPPED) for item in items])
-
-
-async def group_name(ctx: ToolContext, group_id: str) -> str:
-    """Look up a beta group's name (shown in confirmation forms)."""
-    data = await ctx.client.request("GET", "/v1/betaGroups/{id}", item_id=group_id)
-    return str(attributes_of(resource_of(data)).get("name"))
 
 
 async def add_beta_tester(ctx: ToolContext, args: dict[str, Any]) -> str:

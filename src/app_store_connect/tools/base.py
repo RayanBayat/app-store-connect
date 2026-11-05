@@ -122,6 +122,22 @@ def optional_str(args: dict[str, Any], name: str) -> str | None:
     return value
 
 
+PLATFORMS: Final = ("IOS", "MAC_OS", "TV_OS", "VISION_OS")
+
+
+def optional_choice(args: dict[str, Any], name: str, allowed: tuple[str, ...]) -> str | None:
+    """Return args[name] if it is one of `allowed`; None when the argument is absent."""
+    value = optional_str(args, name)
+    if value is not None and value not in allowed:
+        raise ToolInputError(f"Argument '{name}' must be one of: {', '.join(allowed)}.")
+    return value
+
+
+def choice(args: dict[str, Any], name: str, allowed: tuple[str, ...], default: str) -> str:
+    """Return args[name] if it is one of `allowed`, or `default` when the argument is absent."""
+    return optional_choice(args, name, allowed) or default
+
+
 def limit_arg(args: dict[str, Any]) -> int:
     """Return the `limit` argument, defaulting and clamping to Apple's maximum."""
     value = args.get("limit", DEFAULT_LIMIT)
