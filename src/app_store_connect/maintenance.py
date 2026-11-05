@@ -235,7 +235,7 @@ class Maintenance:
         input_responses: Mapping[str, Any] | None = None,
         request_state: str | None = None,
     ) -> types.CallToolResult:
-        """Ask the human to confirm; stamp the review only on an explicit accept of `read`."""
+        """Ask the human to confirm; record the review only after they press Accept."""
         summary = summary.strip()
         if not summary or len(summary) > MAX_SUMMARY_CHARS:
             return text_result(
@@ -286,7 +286,7 @@ class Maintenance:
         input_responses: Mapping[str, Any] | None,
         request_state: str | None,
     ) -> None:
-        """Show the form (either protocol era); return only after an explicit read=true accept."""
+        """Show the form (either protocol era); return only after the human presses Accept."""
         await ask_human(
             session,
             self._book,
@@ -294,7 +294,6 @@ class Maintenance:
             arguments=arguments,
             message=review_form(summary, built_at, facts, load_record()),
             schema=CONFIRM_SCHEMA,
-            approve_field="read",
             input_responses=input_responses,
             request_state=request_state,
         )

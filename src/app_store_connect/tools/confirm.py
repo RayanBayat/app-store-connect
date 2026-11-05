@@ -66,7 +66,6 @@ async def confirm_change(
             arguments=ctx.arguments,
             message=build_message(title, lines, public=public),
             schema=APPROVE_SCHEMA,
-            approve_field="approve",
             input_responses=ctx.input_responses,
             request_state=ctx.request_state,
         )

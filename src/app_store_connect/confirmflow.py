@@ -81,11 +81,9 @@ class ConfirmationBook:
             del self._pending[nonce]
 
 
-def change_digest(
-    tool_name: str, arguments: Mapping[str, Any], message: str, approve_field: str
-) -> str:
+def change_digest(tool_name: str, arguments: Mapping[str, Any], message: str) -> str:
     """A fingerprint of the exact question: the tool, its arguments and the form text."""
-    canonical = json.dumps([tool_name, arguments, message, approve_field], sort_keys=True)
+    canonical = json.dumps([tool_name, arguments, message], sort_keys=True)
     return hashlib.sha256(canonical.encode("utf-8", "surrogatepass")).hexdigest()
 
 
@@ -192,7 +190,6 @@ async def ask_human(
     arguments: Mapping[str, Any],
     message: str,
     schema: dict[str, Any],
-    approve_field: str,
     input_responses: Mapping[str, Any] | None = None,
     request_state: str | None = None,
 ) -> None:
@@ -206,7 +203,7 @@ async def ask_human(
         if problem is not None:
             raise ConfirmationRefusedError(problem)
         if is_version_at_least(session.protocol_version, INPUT_REQUIRED_VERSION):
-            digest = change_digest(tool_name, arguments, message, approve_field)
+            digest = change_digest(tool_name, arguments, message)
             await _ask_input_required(book, message, schema, digest, input_responses, request_state)
         else:
             await _ask_back_channel(session, message, schema)

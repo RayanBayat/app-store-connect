@@ -439,5 +439,4 @@ async def test_no_back_channel_is_reported_as_such(tmp_path: Path) -> None:
             arguments={},
             message="m",
             schema={},
-            approve_field="approve",
         )
