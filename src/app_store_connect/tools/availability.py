@@ -182,6 +182,32 @@ def state_word(available: bool | None) -> str:
     return "available" if available else "not available"
 
 
+def availability_body(app_id: str, codes: list[str]) -> dict[str, Any]:
+    """The POST body that creates an availability with `codes` on sale (see create_availability)."""
+    refs = [f"${{ta{i}}}" for i in range(len(codes))]
+    return {
+        "data": {
+            "type": "appAvailabilities",
+            "attributes": {"availableInNewTerritories": False},
+            "relationships": {
+                "app": relationship("apps", app_id),
+                "territoryAvailabilities": {
+                    "data": [{"type": "territoryAvailabilities", "id": ref} for ref in refs]
+                },
+            },
+        },
+        "included": [
+            {
+                "type": "territoryAvailabilities",
+                "id": ref,
+                "attributes": {"available": True},
+                "relationships": {"territory": relationship("territories", code)},
+            }
+            for ref, code in zip(refs, codes, strict=True)
+        ],
+    }
+
+
 async def create_availability(ctx: ToolContext, app_id: str, codes: list[str], label: str) -> str:
     """The app has no availability yet: create it with the wanted territories on sale.
 
@@ -205,28 +231,7 @@ async def create_availability(ctx: ToolContext, app_id: str, codes: list[str], l
         "are not switched on automatically.",
     ]
     await confirm_change(ctx, "Put the app on sale in these territories", lines)
-    refs = [f"${{ta{i}}}" for i in range(len(codes))]
-    body = {
-        "data": {
-            "type": "appAvailabilities",
-            "attributes": {"availableInNewTerritories": False},
-            "relationships": {
-                "app": relationship("apps", app_id),
-                "territoryAvailabilities": {
-                    "data": [{"type": "territoryAvailabilities", "id": ref} for ref in refs]
-                },
-            },
-        },
-        "included": [
-            {
-                "type": "territoryAvailabilities",
-                "id": ref,
-                "attributes": {"available": True},
-                "relationships": {"territory": relationship("territories", code)},
-            }
-            for ref, code in zip(refs, codes, strict=True)
-        ],
-    }
+    body = availability_body(app_id, codes)
     await ctx.client.request("POST", "/v2/appAvailabilities", body=body)
     return f"Created the availability: on sale in {', '.join(describe(code) for code in codes)}."
 
