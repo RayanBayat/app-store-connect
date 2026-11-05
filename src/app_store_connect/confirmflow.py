@@ -1,15 +1,16 @@
-"""Ask the human a yes/no question on both MCP protocol eras, and never act on a guess.
+"""Ask the human a yes/no question on both MCP protocols, and never act on a guess.
 
 Two ways exist to show a form to the person, depending on the protocol version the client
 negotiated:
 
-- Up to 2025-11-25 the server may send a request back to the client in the middle of a tool
-  call (the "back-channel"): `session.elicit_form(...)`.
-- From 2026-07-28 it may not. Instead the tool returns an `input_required` result that carries
-  the form; the client shows it and then calls the same tool again with the answer
-  (`input_responses`) and the opaque `request_state` we gave it (multi round-trip requests).
+- Older protocol (up to 2025-11-25): the server asks during the call. It may send a request back
+  to the client in the middle of a tool call (the "back-channel"): `session.elicit_form(...)`.
+- Protocol 2026-07-28: the call returns "input required". A server may no longer ask in the
+  middle of a call. Instead the tool returns an `InputRequiredResult` that carries the form; the
+  client shows it and then calls the same tool again with the answer (`input_responses`) and the
+  opaque `request_state` we gave it.
 
-In the second era the retry arrives from outside, so nothing in it is trusted. The SDK's
+With protocol 2026-07-28 the retry arrives from outside, so nothing in it is trusted. The SDK's
 `RequestStateBoundary` (see `build_server`) seals `request_state` with AES-GCM under a random
 per-process key, binds it to the tool name and exact arguments, and expires it after 10
 minutes. On top of that this module puts a single-use nonce and a digest of the exact change
@@ -106,7 +107,7 @@ def form_support_problem(session: ServerSession) -> str | None:
     return None
 
 
-def _outcome(result: types.ElicitResult) -> None:
+def require_accept(result: types.ElicitResult) -> None:
     """Return only when the human explicitly pressed Accept in their own client.
 
     The forms have no input fields, so Accept itself is the approval.
@@ -120,7 +121,7 @@ def _outcome(result: types.ElicitResult) -> None:
 
 
 async def _ask_back_channel(session: ServerSession, message: str, schema: dict[str, Any]) -> None:
-    """Older protocol versions: send the form to the client in the middle of the call."""
+    """Older protocol: ask during the call, by sending the form to the client and waiting."""
     try:
         result = await session.elicit_form(message, schema)
     except NoBackChannelError as exc:
@@ -133,17 +134,17 @@ async def _ask_back_channel(session: ServerSession, message: str, schema: dict[s
         raise ConfirmationRefusedError(
             "this client cannot show confirmation forms (MCP elicitation)"
         ) from exc
-    _outcome(result)
+    require_accept(result)
 
 
 def _first_round(
     book: ConfirmationBook, message: str, schema: dict[str, Any], digest: str
 ) -> InputRequiredSignal:
-    """Build the `input_required` result: the form plus the state to be echoed back."""
+    """Build the "input required" result: the form plus the state to be echoed back."""
     request = types.ElicitRequest(
         params=types.ElicitRequestFormParams(message=message, requested_schema=schema)
     )
-    state = compact_json({"n": book.issue(), "d": digest})
+    state = compact_json({"nonce": book.issue(), "digest": digest})
     result = types.InputRequiredResult(input_requests={INPUT_KEY: request}, request_state=state)
     return InputRequiredSignal(result)
 
@@ -152,9 +153,17 @@ def _read_state(request_state: str) -> tuple[object, object]:
     """Parse the (already unsealed) state into (nonce, digest); anything odd is a refusal."""
     try:
         state = json.loads(request_state)
-        return state["n"], state["d"]
+        return state["nonce"], state["digest"]
     except (ValueError, KeyError, TypeError):
         raise ConfirmationRefusedError("the confirmation state is malformed") from None
+
+
+def _form_answer(input_responses: Mapping[str, Any] | None) -> types.ElicitResult:
+    """The human's answer from the retry; a missing or malformed answer is a refusal."""
+    answer = (input_responses or {}).get(INPUT_KEY)
+    if not isinstance(answer, types.ElicitResult):
+        raise ConfirmationRefusedError("the answer to the form is missing or malformed")
+    return answer
 
 
 async def _ask_input_required(
@@ -165,19 +174,27 @@ async def _ask_input_required(
     input_responses: Mapping[str, Any] | None,
     request_state: str | None,
 ) -> None:
+    """Protocol 2026-07-28: the first call and the retry both come here. Four cases.
+
+    1. First call (no state and no answer): return the form to the client (raises
+       `InputRequiredSignal`).
+    2. An answer without the state we issued: refuse.
+    3. A retry that cannot be trusted: refuse when the state is unknown, expired or already used,
+       or when the answer is missing, malformed, declined or cancelled.
+    4. A valid Accept, but for a different change than the one the human saw (for example the old
+       value changed meanwhile): do not act, return a fresh form instead.
+
+    Only an Accept of exactly the current change returns normally.
+    """
     if request_state is None and not input_responses:
-        raise _first_round(book, message, schema, digest)
+        raise _first_round(book, message, schema, digest)  # case 1
     if request_state is None:
-        raise ConfirmationRefusedError("the answer came without the confirmation state")
+        raise ConfirmationRefusedError("the answer came without the confirmation state")  # case 2
     nonce, seen_digest = _read_state(request_state)
     if not book.consume(nonce):  # unknown, expired or already used: single use
-        raise ConfirmationRefusedError("the confirmation expired or was already used")
-    answer = (input_responses or {}).get(INPUT_KEY)
-    if not isinstance(answer, types.ElicitResult):
-        raise ConfirmationRefusedError("the answer to the form is missing or malformed")
-    _outcome(answer)
-    if seen_digest != digest:
-        # The human approved something else (for example the old value changed meanwhile).
+        raise ConfirmationRefusedError("the confirmation expired or was already used")  # case 3
+    require_accept(_form_answer(input_responses))  # case 3
+    if seen_digest != digest:  # case 4
         logger.warning("confirmation does not match the current change; asking again")
         raise _first_round(book, message, schema, digest)
 
