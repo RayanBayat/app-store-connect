@@ -222,19 +222,6 @@ async def update_age_rating(ctx: ToolContext, args: dict[str, Any]) -> str:
     return "Updated: " + to_text(changed)
 
 
-READ_TOOLS = [
-    ToolSpec(
-        "get_age_rating",
-        "Show the age rating questionnaire answers for each app info of an app (the editable "
-        "one and the live one): its state, whether it is editable, every answer in plain "
-        "words, and a list of questions that are 'not answered' (Apple blocks submitting "
-        "while any is missing).",
-        {"app_id": string_prop("The app's ID.")},
-        ("app_id",),
-        get_age_rating,
-    ),
-]
-
 _ANSWERS_HELP = (
     "Object of question -> answer. Yes/no questions take true or false: "
     + ", ".join(BOOLEAN_QUESTIONS)
@@ -248,15 +235,32 @@ _ANSWERS_HELP = (
     "except X'."
 )
 
-WRITE_TOOLS = [
+
+READ_TOOLS: Final[list[ToolSpec]] = [
     ToolSpec(
-        "update_age_rating",
-        "Answer or change the age rating questionnaire of an editable app info (state "
+        name="get_age_rating",
+        description=(
+            "Show the age rating questionnaire answers for each app info of an app (the editable "
+            "one and the live one): its state, whether it is editable, every answer in plain "
+            "words, and a list of questions that are 'not answered' (Apple blocks submitting "
+            "while any is missing)."
+        ),
+        properties={"app_id": string_prop("The app's ID.")},
+        required=("app_id",),
+        handler=get_age_rating,
+    ),
+]
+
+
+WRITE_TOOLS: Final[list[ToolSpec]] = [
+    ToolSpec(
+        name="update_age_rating",
+        description="Answer or change the age rating questionnaire of an editable app info (state "
         "PREPARE_FOR_SUBMISSION, DEVELOPER_REJECTED or REJECTED; others are refused). Unknown "
         "questions and invalid values are refused first. The form lists every changed answer "
         "as old -> new and states that the answers are the developer's legal declaration that "
         "sets the App Store age rating. Asks the user to confirm.",
-        {
+        properties={
             "app_info_id": string_prop("The app info's ID (see get_age_rating)."),
             "answers": {
                 "type": "object",
@@ -264,8 +268,8 @@ WRITE_TOOLS = [
                 "minProperties": 1,
             },
         },
-        ("app_info_id", "answers"),
-        update_age_rating,
+        required=("app_info_id", "answers"),
+        handler=update_age_rating,
         write=True,
     ),
 ]

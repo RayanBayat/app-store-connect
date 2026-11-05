@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Final
 
 from app_store_connect.tools.base import (
     ToolContext,
@@ -180,20 +180,25 @@ async def set_free_price(ctx: ToolContext, args: dict[str, Any]) -> str:
     )
 
 
-WRITE_TOOLS = [
+READ_TOOLS: Final[list[ToolSpec]] = []
+
+
+WRITE_TOOLS: Final[list[ToolSpec]] = [
     ToolSpec(
-        "set_free_price",
-        "Make a free app free in every country by giving it a price schedule with the free "
-        "(0) price point. Only for apps that have no price yet; it refuses to replace a paid "
-        "price. Asks the user to confirm.",
-        {
+        name="set_free_price",
+        description=(
+            "Make a free app free in every country by giving it a price schedule with the free "
+            "(0) price point. Only for apps that have no price yet; it refuses to replace a paid "
+            "price. Asks the user to confirm."
+        ),
+        properties={
             "app_id": string_prop("The app's ID."),
             "base_territory": string_prop(
                 "3-letter code of the base territory (default SWE).", default="SWE"
             ),
         },
-        ("app_id",),
-        set_free_price,
+        required=("app_id",),
+        handler=set_free_price,
         write=True,
     ),
 ]

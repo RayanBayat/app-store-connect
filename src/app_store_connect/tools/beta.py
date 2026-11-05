@@ -1,4 +1,4 @@
-"""TestFlight: read tools for beta groups and testers."""
+"""TestFlight: read beta groups and testers (read), add or remove testers (write)."""
 
 from __future__ import annotations
 
@@ -50,29 +50,6 @@ async def list_beta_testers(ctx: ToolContext, args: dict[str, Any]) -> str:
     return to_text([summarize(item, TESTER_FIELDS, wrap=TESTER_WRAPPED) for item in items])
 
 
-READ_TOOLS = [
-    ToolSpec(
-        "list_beta_groups",
-        "List the TestFlight beta groups of an app.",
-        {"app_id": string_prop("The app's ID."), "limit": LIMIT_PROP},
-        ("app_id",),
-        list_beta_groups,
-    ),
-    ToolSpec(
-        "list_beta_testers",
-        "List TestFlight beta testers of a beta group or of an app.",
-        {
-            "beta_group_id": string_prop("Only testers in this beta group."),
-            "app_id": string_prop("Only testers of this app."),
-            "email": string_prop("Only the tester with this email."),
-            "limit": LIMIT_PROP,
-        },
-        (),
-        list_beta_testers,
-    ),
-]
-
-
 async def group_name(ctx: ToolContext, group_id: str) -> str:
     """Look up a beta group's name (shown in confirmation forms)."""
     data = await ctx.client.request("GET", "/v1/betaGroups/{id}", item_id=group_id)
@@ -120,29 +97,52 @@ async def remove_beta_tester(ctx: ToolContext, args: dict[str, Any]) -> str:
     return f"Removed {untrusted(str(email))} from beta group {untrusted(name)}."
 
 
-WRITE_TOOLS = [
+READ_TOOLS: Final[list[ToolSpec]] = [
     ToolSpec(
-        "add_beta_tester",
-        "Add a tester (by email) to a TestFlight beta group. Asks the user to confirm.",
-        {
+        name="list_beta_groups",
+        description="List the TestFlight beta groups of an app.",
+        properties={"app_id": string_prop("The app's ID."), "limit": LIMIT_PROP},
+        required=("app_id",),
+        handler=list_beta_groups,
+    ),
+    ToolSpec(
+        name="list_beta_testers",
+        description="List TestFlight beta testers of a beta group or of an app.",
+        properties={
+            "beta_group_id": string_prop("Only testers in this beta group."),
+            "app_id": string_prop("Only testers of this app."),
+            "email": string_prop("Only the tester with this email."),
+            "limit": LIMIT_PROP,
+        },
+        required=(),
+        handler=list_beta_testers,
+    ),
+]
+
+
+WRITE_TOOLS: Final[list[ToolSpec]] = [
+    ToolSpec(
+        name="add_beta_tester",
+        description="Add a tester (by email) to a TestFlight beta group. Asks the user to confirm.",
+        properties={
             "beta_group_id": string_prop("The beta group's ID."),
             "email": string_prop("The tester's email address."),
             "first_name": string_prop("Optional first name."),
             "last_name": string_prop("Optional last name."),
         },
-        ("beta_group_id", "email"),
-        add_beta_tester,
+        required=("beta_group_id", "email"),
+        handler=add_beta_tester,
         write=True,
     ),
     ToolSpec(
-        "remove_beta_tester",
-        "Remove a tester from a TestFlight beta group. Asks the user to confirm.",
-        {
+        name="remove_beta_tester",
+        description="Remove a tester from a TestFlight beta group. Asks the user to confirm.",
+        properties={
             "beta_group_id": string_prop("The beta group's ID."),
             "beta_tester_id": string_prop("The beta tester's ID."),
         },
-        ("beta_group_id", "beta_tester_id"),
-        remove_beta_tester,
+        required=("beta_group_id", "beta_tester_id"),
+        handler=remove_beta_tester,
         write=True,
         destructive=True,
     ),

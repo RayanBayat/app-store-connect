@@ -289,26 +289,29 @@ async def set_territory_availability(ctx: ToolContext, args: dict[str, Any]) -> 
     return f"The app is now {state_word(wanted)} in: {', '.join(describe(c) for c in done)}."
 
 
-READ_TOOLS = [
+READ_TOOLS: Final[list[ToolSpec]] = [
     ToolSpec(
-        "get_app_availability",
-        "Find out where an app is on sale and why not: whether it is available in new "
+        name="get_app_availability",
+        description="Find out where an app is on sale and why not: whether it is available in new "
         "territories, every territory with available, releaseDate and Apple's reasons "
         "(contentStatuses, with plain-English hints, grouped by status), a short summary, and "
         "the app's price schedule (base territory and current price, or 'no price set').",
-        {"app_id": string_prop("The app's ID.")},
-        ("app_id",),
-        get_app_availability,
+        properties={"app_id": string_prop("The app's ID.")},
+        required=("app_id",),
+        handler=get_app_availability,
     ),
 ]
 
-WRITE_TOOLS = [
+
+WRITE_TOOLS: Final[list[ToolSpec]] = [
     ToolSpec(
-        "set_territory_availability",
-        "Switch an app on or off in specific territories (3-letter codes such as SWE, USA, "
-        "GBR). Unknown codes are refused. The form lists every territory with old -> new. "
-        "Asks the user to confirm.",
-        {
+        name="set_territory_availability",
+        description=(
+            "Switch an app on or off in specific territories (3-letter codes such as SWE, USA, "
+            "GBR). Unknown codes are refused. The form lists every territory with old -> new. "
+            "Asks the user to confirm."
+        ),
+        properties={
             "app_id": string_prop("The app's ID."),
             "territories": {
                 "type": "array",
@@ -319,8 +322,8 @@ WRITE_TOOLS = [
             },
             "available": {"type": "boolean", "description": "true to sell there, false to stop."},
         },
-        ("app_id", "territories", "available"),
-        set_territory_availability,
+        required=("app_id", "territories", "available"),
+        handler=set_territory_availability,
         write=True,
     ),
 ]

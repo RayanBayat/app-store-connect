@@ -1,4 +1,4 @@
-"""Read tools for App Store versions (the releases shown on the store)."""
+"""App Store versions (the releases shown on the store): read, create a draft, pick a build."""
 
 from __future__ import annotations
 
@@ -47,32 +47,6 @@ async def get_version_status(ctx: ToolContext, args: dict[str, Any]) -> str:
         "GET", "/v1/appStoreVersions/{id}", item_id=require_str(args, "version_id")
     )
     return to_text(summarize(data["data"], VERSION_FIELDS))
-
-
-READ_TOOLS = [
-    ToolSpec(
-        "list_app_store_versions",
-        "List an app's App Store versions with their state (e.g. PREPARE_FOR_SUBMISSION, "
-        "WAITING_FOR_REVIEW, IN_REVIEW, REJECTED, READY_FOR_DISTRIBUTION).",
-        {
-            "app_id": string_prop("The app's ID."),
-            "state": string_prop(
-                "Optional appVersionState filter; several values separated by commas."
-            ),
-            "platform": string_prop("Optional: IOS, MAC_OS, TV_OS or VISION_OS."),
-            "limit": LIMIT_PROP,
-        },
-        ("app_id",),
-        list_app_store_versions,
-    ),
-    ToolSpec(
-        "get_version_status",
-        "Get the current state of one App Store version by its version ID.",
-        {"version_id": string_prop("The App Store version's ID.")},
-        ("version_id",),
-        get_version_status,
-    ),
-]
 
 
 def choice(
@@ -136,29 +110,59 @@ async def select_build_for_version(ctx: ToolContext, args: dict[str, Any]) -> st
     return f"Build {build_id} (build number {number}) is now selected for version {version_id}."
 
 
-WRITE_TOOLS = [
+READ_TOOLS: Final[list[ToolSpec]] = [
     ToolSpec(
-        "create_app_store_version",
-        "Create a new draft App Store version for an app. Asks the user to confirm.",
-        {
+        name="list_app_store_versions",
+        description=(
+            "List an app's App Store versions with their state (e.g. PREPARE_FOR_SUBMISSION, "
+            "WAITING_FOR_REVIEW, IN_REVIEW, REJECTED, READY_FOR_DISTRIBUTION)."
+        ),
+        properties={
+            "app_id": string_prop("The app's ID."),
+            "state": string_prop(
+                "Optional appVersionState filter; several values separated by commas."
+            ),
+            "platform": string_prop("Optional: IOS, MAC_OS, TV_OS or VISION_OS."),
+            "limit": LIMIT_PROP,
+        },
+        required=("app_id",),
+        handler=list_app_store_versions,
+    ),
+    ToolSpec(
+        name="get_version_status",
+        description="Get the current state of one App Store version by its version ID.",
+        properties={"version_id": string_prop("The App Store version's ID.")},
+        required=("version_id",),
+        handler=get_version_status,
+    ),
+]
+
+
+WRITE_TOOLS: Final[list[ToolSpec]] = [
+    ToolSpec(
+        name="create_app_store_version",
+        description="Create a new draft App Store version for an app. Asks the user to confirm.",
+        properties={
             "app_id": string_prop("The app's ID."),
             "version_string": string_prop("The new version, e.g. 1.3.0."),
             "platform": string_prop("IOS (default), MAC_OS, TV_OS or VISION_OS."),
             "release_type": string_prop("Optional: MANUAL, AFTER_APPROVAL or SCHEDULED."),
         },
-        ("app_id", "version_string"),
-        create_app_store_version,
+        required=("app_id", "version_string"),
+        handler=create_app_store_version,
         write=True,
     ),
     ToolSpec(
-        "select_build_for_version",
-        "Choose which processed build an App Store version uses. Asks the user to confirm.",
-        {
+        name="select_build_for_version",
+        description=(
+            "Choose which processed build an App Store version uses. Asks the user to confirm."
+        ),
+        properties={
             "version_id": string_prop("The App Store version's ID."),
             "build_id": string_prop("The build's ID (processing state VALID)."),
         },
-        ("version_id", "build_id"),
-        select_build_for_version,
+        required=("version_id", "build_id"),
+        handler=select_build_for_version,
         write=True,
     ),
 ]

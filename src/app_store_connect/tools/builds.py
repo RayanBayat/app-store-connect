@@ -1,8 +1,8 @@
-"""Read tools for builds uploaded from Xcode / Transporter."""
+"""Builds uploaded from Xcode or Transporter: read them (read), send one to TestFlight (write)."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Final
 
 from app_store_connect.textsafe import untrusted
 from app_store_connect.tools.base import (
@@ -51,31 +51,6 @@ async def get_build(ctx: ToolContext, args: dict[str, Any]) -> str:
     return to_text(summarize(data["data"], BUILD_FIELDS))
 
 
-READ_TOOLS = [
-    ToolSpec(
-        "list_builds",
-        "List builds (newest first). Filter by app, marketing version, build number or "
-        "processing state (PROCESSING, FAILED, INVALID, VALID).",
-        {
-            "app_id": string_prop("Only builds of this app."),
-            "version": string_prop("Marketing version, e.g. 1.2.0 (needs app_id)."),
-            "build_number": string_prop("Build number, e.g. 42."),
-            "processing_state": string_prop("PROCESSING, FAILED, INVALID or VALID."),
-            "limit": LIMIT_PROP,
-        },
-        (),
-        list_builds,
-    ),
-    ToolSpec(
-        "get_build",
-        "Get one build's details (processing state, expiry) by its build ID.",
-        {"build_id": string_prop("The build's ID.")},
-        ("build_id",),
-        get_build,
-    ),
-]
-
-
 async def build_label(ctx: ToolContext, build_id: str) -> str:
     """Describe a build for confirmation forms, e.g. 'build number 42 (ID 123)'."""
     data = await ctx.client.request("GET", "/v1/builds/{id}", item_id=build_id)
@@ -111,24 +86,51 @@ async def submit_build_for_beta_review(ctx: ToolContext, args: dict[str, Any]) -
     return f"Submitted {label} for beta review (submission {data['data'].get('id')})."
 
 
-WRITE_TOOLS = [
+READ_TOOLS: Final[list[ToolSpec]] = [
     ToolSpec(
-        "add_build_to_beta_group",
-        "Make a build available to a TestFlight beta group. Asks the user to confirm.",
-        {
+        name="list_builds",
+        description="List builds (newest first). Filter by app, marketing version, build number or "
+        "processing state (PROCESSING, FAILED, INVALID, VALID).",
+        properties={
+            "app_id": string_prop("Only builds of this app."),
+            "version": string_prop("Marketing version, e.g. 1.2.0 (needs app_id)."),
+            "build_number": string_prop("Build number, e.g. 42."),
+            "processing_state": string_prop("PROCESSING, FAILED, INVALID or VALID."),
+            "limit": LIMIT_PROP,
+        },
+        required=(),
+        handler=list_builds,
+    ),
+    ToolSpec(
+        name="get_build",
+        description="Get one build's details (processing state, expiry) by its build ID.",
+        properties={"build_id": string_prop("The build's ID.")},
+        required=("build_id",),
+        handler=get_build,
+    ),
+]
+
+
+WRITE_TOOLS: Final[list[ToolSpec]] = [
+    ToolSpec(
+        name="add_build_to_beta_group",
+        description="Make a build available to a TestFlight beta group. Asks the user to confirm.",
+        properties={
             "beta_group_id": string_prop("The beta group's ID."),
             "build_id": string_prop("The build's ID."),
         },
-        ("beta_group_id", "build_id"),
-        add_build_to_beta_group,
+        required=("beta_group_id", "build_id"),
+        handler=add_build_to_beta_group,
         write=True,
     ),
     ToolSpec(
-        "submit_build_for_beta_review",
-        "Submit a build to Apple's TestFlight beta app review. Asks the user to confirm.",
-        {"build_id": string_prop("The build's ID.")},
-        ("build_id",),
-        submit_build_for_beta_review,
+        name="submit_build_for_beta_review",
+        description=(
+            "Submit a build to Apple's TestFlight beta app review. Asks the user to confirm."
+        ),
+        properties={"build_id": string_prop("The build's ID.")},
+        required=("build_id",),
+        handler=submit_build_for_beta_review,
         write=True,
     ),
 ]

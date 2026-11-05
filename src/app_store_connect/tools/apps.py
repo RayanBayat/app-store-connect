@@ -1,8 +1,8 @@
-"""Read tools for apps."""
+"""Apps: list and read apps (read), and change the primary language (write)."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Final
 
 from app_store_connect.tools.base import (
     LIMIT_PROP,
@@ -78,38 +78,39 @@ async def update_app_primary_locale(ctx: ToolContext, args: dict[str, Any]) -> s
     return f"The primary language is now {locale} (it was {old})."
 
 
-READ_TOOLS = [
+READ_TOOLS: Final[list[ToolSpec]] = [
     ToolSpec(
-        "list_apps",
-        "List the apps in the App Store Connect account (id, name, bundle ID).",
-        {
+        name="list_apps",
+        description="List the apps in the App Store Connect account (id, name, bundle ID).",
+        properties={
             "name": string_prop("Only apps with exactly this name."),
             "bundle_id": string_prop("Only the app with this bundle ID."),
             "limit": LIMIT_PROP,
         },
-        (),
-        list_apps,
+        required=(),
+        handler=list_apps,
     ),
     ToolSpec(
-        "get_app",
-        "Get one app's details by its App Store Connect app ID.",
-        {"app_id": string_prop("The app's numeric App Store Connect ID.")},
-        ("app_id",),
-        get_app,
+        name="get_app",
+        description="Get one app's details by its App Store Connect app ID.",
+        properties={"app_id": string_prop("The app's numeric App Store Connect ID.")},
+        required=("app_id",),
+        handler=get_app,
     ),
 ]
 
-WRITE_TOOLS = [
+
+WRITE_TOOLS: Final[list[ToolSpec]] = [
     ToolSpec(
-        "update_app_primary_locale",
-        "Change the app's primary language. The app must already have an app info "
+        name="update_app_primary_locale",
+        description="Change the app's primary language. The app must already have an app info "
         "localization in that language. Asks the user to confirm.",
-        {
+        properties={
             "app_id": string_prop("The app's ID."),
             "locale": string_prop("App Store locale code, e.g. sv, en-US."),
         },
-        ("app_id", "locale"),
-        update_app_primary_locale,
+        required=("app_id", "locale"),
+        handler=update_app_primary_locale,
         write=True,
     ),
 ]

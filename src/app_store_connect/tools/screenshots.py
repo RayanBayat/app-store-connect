@@ -208,28 +208,33 @@ async def upload_screenshot(ctx: ToolContext, args: dict[str, Any]) -> str:
     )
 
 
-READ_TOOLS = [
+READ_TOOLS: Final[list[ToolSpec]] = [
     ToolSpec(
-        "list_screenshot_sets",
-        "List the screenshot sets (per device type) of an App Store version localization, "
-        "with the number of screenshots in each.",
-        {"localization_id": string_prop("The version localization's ID.")},
-        ("localization_id",),
-        list_screenshot_sets,
+        name="list_screenshot_sets",
+        description=(
+            "List the screenshot sets (per device type) of an App Store version localization, "
+            "with the number of screenshots in each."
+        ),
+        properties={"localization_id": string_prop("The version localization's ID.")},
+        required=("localization_id",),
+        handler=list_screenshot_sets,
     ),
 ]
 
-WRITE_TOOLS = [
+
+WRITE_TOOLS: Final[list[ToolSpec]] = [
     ToolSpec(
-        "upload_screenshot",
-        "Upload a .png/.jpg screenshot from the allowed folder (ASC_ROOT) into a screenshot "
-        "set. Asks the user to confirm.",
-        {
+        name="upload_screenshot",
+        description=(
+            "Upload a .png/.jpg screenshot from the allowed folder (ASC_ROOT) into a screenshot "
+            "set. Asks the user to confirm."
+        ),
+        properties={
             "screenshot_set_id": string_prop("The screenshot set's ID."),
             "file_path": string_prop("Path of the image, inside the allowed folder."),
         },
-        ("screenshot_set_id", "file_path"),
-        upload_screenshot,
+        required=("screenshot_set_id", "file_path"),
+        handler=upload_screenshot,
         write=True,
     ),
 ]

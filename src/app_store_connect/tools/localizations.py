@@ -229,60 +229,67 @@ async def create_app_info_localization(ctx: ToolContext, args: dict[str, Any]) -
     return created_text(data, attributes)
 
 
-READ_TOOLS = [
+READ_TOOLS: Final[list[ToolSpec]] = [
     ToolSpec(
-        "get_version_localizations",
-        "Get the App Store text (description, keywords, what's new, promotional text, URLs) "
-        "for every language of an App Store version.",
-        {"version_id": string_prop("The App Store version's ID.")},
-        ("version_id",),
-        get_version_localizations,
+        name="get_version_localizations",
+        description=(
+            "Get the App Store text (description, keywords, what's new, promotional text, URLs) "
+            "for every language of an App Store version."
+        ),
+        properties={"version_id": string_prop("The App Store version's ID.")},
+        required=("version_id",),
+        handler=get_version_localizations,
     ),
     ToolSpec(
-        "get_app_info_localizations",
-        "Get the app name, subtitle and privacy policy URL for every language of an app.",
-        {"app_id": string_prop("The app's ID.")},
-        ("app_id",),
-        get_app_info_localizations,
+        name="get_app_info_localizations",
+        description=(
+            "Get the app name, subtitle and privacy policy URL for every language of an app."
+        ),
+        properties={"app_id": string_prop("The app's ID.")},
+        required=("app_id",),
+        handler=get_app_info_localizations,
     ),
 ]
 
-WRITE_TOOLS = [
+
+WRITE_TOOLS: Final[list[ToolSpec]] = [
     ToolSpec(
-        "update_version_localization",
-        "Change store text of one language of an App Store version (use "
+        name="update_version_localization",
+        description="Change store text of one language of an App Store version (use "
         "get_version_localizations to find the localization ID). Asks the user to confirm.",
-        {
+        properties={
             "localization_id": string_prop("The version localization's ID."),
             **{
                 name: string_prop(f"New {name}.", maxLength=FIELD_LIMITS[name])
                 for name in VERSION_TEXT_FIELDS
             },
         },
-        ("localization_id",),
-        update_version_localization,
+        required=("localization_id",),
+        handler=update_version_localization,
         write=True,
     ),
     ToolSpec(
-        "update_app_info_localization",
-        "Change the app name, subtitle or privacy policy URL of one language (use "
+        name="update_app_info_localization",
+        description="Change the app name, subtitle or privacy policy URL of one language (use "
         "get_app_info_localizations to find the ID). Asks the user to confirm.",
-        {
+        properties={
             "localization_id": string_prop("The app info localization's ID."),
             **{
                 name: string_prop(f"New {name}.", maxLength=FIELD_LIMITS[name])
                 for name in INFO_TEXT_FIELDS
             },
         },
-        ("localization_id",),
-        update_app_info_localization,
+        required=("localization_id",),
+        handler=update_app_info_localization,
         write=True,
     ),
     ToolSpec(
-        "create_version_localization",
-        "Add a new language to an App Store version (POST). Give a locale such as 'sv' or "
-        "'en-US' and any of the texts. Asks the user to confirm.",
-        {
+        name="create_version_localization",
+        description=(
+            "Add a new language to an App Store version (POST). Give a locale such as 'sv' or "
+            "'en-US' and any of the texts. Asks the user to confirm."
+        ),
+        properties={
             "version_id": string_prop("The App Store version's ID."),
             "locale": string_prop("App Store locale code, e.g. sv, en-US, zh-Hans."),
             **{
@@ -290,15 +297,17 @@ WRITE_TOOLS = [
                 for arg, attr in VERSION_CREATE_ARGS.items()
             },
         },
-        ("version_id", "locale"),
-        create_version_localization,
+        required=("version_id", "locale"),
+        handler=create_version_localization,
         write=True,
     ),
     ToolSpec(
-        "create_app_info_localization",
-        "Add a new language to an app's info (name, subtitle, privacy policy URL). Apple "
-        "requires a name. Asks the user to confirm.",
-        {
+        name="create_app_info_localization",
+        description=(
+            "Add a new language to an app's info (name, subtitle, privacy policy URL). Apple "
+            "requires a name. Asks the user to confirm."
+        ),
+        properties={
             "app_info_id": string_prop("The app info's ID (see get_app_info_localizations)."),
             "locale": string_prop("App Store locale code, e.g. sv, en-US, zh-Hans."),
             "name": string_prop("The app name in that language.", maxLength=FIELD_LIMITS["name"]),
@@ -307,8 +316,8 @@ WRITE_TOOLS = [
                 for arg, attr in INFO_CREATE_ARGS.items()
             },
         },
-        ("app_info_id", "locale", "name"),
-        create_app_info_localization,
+        required=("app_info_id", "locale", "name"),
+        handler=create_app_info_localization,
         write=True,
     ),
 ]

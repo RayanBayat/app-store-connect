@@ -6,7 +6,7 @@ maintenance record (see `maintenance_record.py`). Submitting is public and canno
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Final
 
 from app_store_connect.client import AscError
 from app_store_connect.tools.base import (
@@ -131,28 +131,34 @@ async def add_and_submit(ctx: ToolContext, submission_id: str, version_id: str) 
     return f"Submitted version {version_id} to App Review (submission {submission_id})."
 
 
-READ_TOOLS = [
+READ_TOOLS: Final[list[ToolSpec]] = [
     ToolSpec(
-        "get_review_submissions",
-        "List an app's App Review submissions and their status.",
-        {"app_id": string_prop("The app's ID."), "state": string_prop("Optional state filter.")},
-        ("app_id",),
-        get_review_submissions,
+        name="get_review_submissions",
+        description="List an app's App Review submissions and their status.",
+        properties={
+            "app_id": string_prop("The app's ID."),
+            "state": string_prop("Optional state filter."),
+        },
+        required=("app_id",),
+        handler=get_review_submissions,
     ),
 ]
 
-WRITE_TOOLS = [
+
+WRITE_TOOLS: Final[list[ToolSpec]] = [
     ToolSpec(
-        "submit_for_app_review",
-        "Submit an App Store version to Apple App Review. This is PUBLIC and IRREVERSIBLE: "
-        "it cannot be unsent and an approved version can go live. Asks the user to confirm.",
-        {
+        name="submit_for_app_review",
+        description=(
+            "Submit an App Store version to Apple App Review. This is PUBLIC and IRREVERSIBLE: it "
+            "cannot be unsent and an approved version can go live. Asks the user to confirm."
+        ),
+        properties={
             "app_id": string_prop("The app's ID."),
             "version_id": string_prop("The App Store version's ID."),
             "platform": string_prop("IOS (default), MAC_OS, TV_OS or VISION_OS."),
         },
-        ("app_id", "version_id"),
-        submit_for_app_review,
+        required=("app_id", "version_id"),
+        handler=submit_for_app_review,
         write=True,
         destructive=True,
     ),
